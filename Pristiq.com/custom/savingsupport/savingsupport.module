@@ -1,0 +1,365 @@
+<?php
+/**
+ * @file
+ * Add js to the saving & support webform module.
+ */
+
+/**
+ * Implements hook_menu().
+ */
+function savingsupport_menu() {
+  $items = array();
+  $items['admin/config/savingsupport'] = array(
+    'title' => 'Savings & Support',
+    'description' => 'Savings & Support configuration',
+    'position' => 'left',
+    'weight' => -100,
+    'page callback' => 'system_admin_menu_block_page',
+    'access arguments' => array('administer site configuration'),
+    'file' => 'system.admin.inc',
+    'file path' => drupal_get_path('module', 'system'),
+  );
+  $items['admin/config/savingsupport/webform'] = array(
+    'title' => 'JavaScript webform',
+    'description' => 'This section is to asociate the webform with the JavaScript.',
+    'page callback' => 'savingsupport_asociate',
+    'access arguments' => array('administer site configuration'),
+  );
+  $items['admin/config/savingsupport/webservice_generate'] = array(
+    'title' => 'Web service credentials to generate members code.',
+    'description' => 'This section is to store the trialcard.com web service credentials to generate members code.',
+    'page callback' => 'savingsupport_webservice_generate',
+    'access arguments' => array('administer site configuration'),
+  );
+  $items['admin/config/savingsupport/webservice_activate'] = array(
+    'title' => 'Web service credentials to activate members code.',
+    'description' => 'This section is to store the trialcard.com web service credentials to validate members code.',
+    'page callback' => 'savingsupport_webservice_validate',
+    'access arguments' => array('administer site configuration'),
+  );
+  return $items;
+}
+
+/* * ********************************************************************************************* */
+
+/**
+ * Menu callback for the config page.
+ */
+function savingsupport_asociate() {
+  return drupal_get_form('savingsupport_form');
+}
+
+/**
+ * Menu callback for the config page web service generate.
+ */
+function savingsupport_webservice_generate() {
+  return drupal_get_form('savingsupport_webservice_generate_form');
+}
+
+/**
+ * Menu callback for the config page web service validate.
+ */
+function savingsupport_webservice_validate() {
+  return drupal_get_form('savingsupport_webservice_validate_form');
+}
+
+/* * ********************************************************************************************* */
+
+/**
+ * Config form to asociate the webform with the hook respectivally.
+ */
+function savingsupport_form() {
+  $webforms = array();
+  $options = node_load_multiple(array(), array('type' => 'Webform'));
+  foreach ($options as $option) {
+    $webforms[$option->nid] = $option->title;
+  }
+  $value_savings = variable_get('webform_savings', "");
+  $value_activate = variable_get('webform_activate', "");
+  $form = array();
+  $form['information'] = array(
+    '#markup' => t('Asociate the webform with the JS and hooks respectivally. Also create the web service connection.'),
+  );
+  $form['webform_savings'] = array(
+    '#type' => 'select',
+    '#title' => t('Select a webform to savings and support'),
+    '#default_value' => $value_savings,
+    '#options' => $webforms,
+    '#required' => TRUE,
+    '#description' => t('Select the respective webform to asociate with the get savings and support hooks'),
+  );
+  $form['webform_activate'] = array(
+    '#type' => 'select',
+    '#title' => t('Select a webform to activate card'),
+    '#default_value' => $value_activate,
+    '#options' => $webforms,
+    '#required' => TRUE,
+    '#description' => t('Select the respective webform to asociate with the activate card hooks'),
+  );
+  $form['submit'] = array(
+    '#type' => 'submit',
+    '#value' => t('Save'),
+  );
+  return $form;
+}
+
+/**
+ * Config form submit function.
+ */
+function savingsupport_form_submit($form, &$form_state) {
+  variable_set('webform_savings', $form_state['values']['webform_savings']);
+  variable_set('webform_activate', $form_state['values']['webform_activate']);
+  drupal_set_message(t('Information stored successfully'));
+}
+
+/* * ********************************************************************************************* */
+
+/**
+ * Config form, store the trialcard webservice credentials to generate codes.
+ */
+function savingsupport_webservice_generate_form() {
+  $webservice_user = variable_get('savingsupport_generate_service_user', "");
+  $webservice_pass = variable_get('savingsupport_generate_service_pass', "");
+  $form = array();
+  $form['information'] = array(
+    '#markup' => t('This section is to store the trialcard.com web service credentials to generate members code.'),
+  );
+  $form['user'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Username:'),
+    '#default_value' => $webservice_user,
+    '#required' => TRUE,
+    '#description' => t('Please insert the user for trialcard.com web service user to generate members code.'),
+  );
+  $form['pass'] = array(
+    '#type' => 'password',
+    '#title' => t('Password:'),
+    '#maxlength' => 64,
+    '#size' => 25,
+    '#default_value' => $webservice_pass,
+    '#required' => TRUE,
+    '#description' => t('Please insert the password trialcard.com web service user to generate members code.'),
+  );
+  $form['submit'] = array(
+    '#type' => 'submit',
+    '#value' => t('Save'),
+  );
+  return $form;
+}
+
+/**
+ * Config form submit function.
+ */
+function savingsupport_webservice_generate_form_submit($form, &$form_state) {
+  variable_set('savingsupport_generate_service_user', $form_state['values']['user']);
+  variable_set('savingsupport_generate_service_pass', $form_state['values']['pass']);
+  drupal_set_message(t('Information stored successfully'));
+}
+
+/* * ********************************************************************************************* */
+
+/**
+ * Config form to store the trialcard webservice credentials to validate code.
+ */
+function savingsupport_webservice_validate_form() {
+  $webservice_user = variable_get('savingsupport_validate_service_user', "");
+  $webservice_pass = variable_get('savingsupport_validate_service_pass', "");
+  $form = array();
+  $form['information'] = array(
+    '#markup' => t('This section is to store the trialcard.com web service credentials to validate members code.'),
+  );
+  $form['user'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Username:'),
+    '#default_value' => $webservice_user,
+    '#required' => TRUE,
+    '#description' => t('Please insert the user for trialcard.com web service user to validate members code.'),
+  );
+  $form['pass'] = array(
+    '#type' => 'password',
+    '#title' => t('Password:'),
+    '#maxlength' => 64,
+    '#size' => 25,
+    '#default_value' => $webservice_pass,
+    '#required' => TRUE,
+    '#description' => t('Please insert the password trialcard.com web service user to validate members code.'),
+  );
+  $form['submit'] = array(
+    '#type' => 'submit',
+    '#value' => t('Save'),
+  );
+  return $form;
+}
+
+/**
+ * Config form submit function.
+ */
+function savingsupport_webservice_validate_form_submit($form, &$form_state) {
+  variable_set('savingsupport_validate_service_user', $form_state['values']['user']);
+  variable_set('savingsupport_validate_service_pass', $form_state['values']['pass']);
+  drupal_set_message(t('Information stored successfully'));
+}
+
+/* * ********************************************************************************************* */
+
+/**
+ * Implements hook_form_alter().
+ *
+ * For include the JS file.
+ */
+function savingsupport_form_alter(&$form, &$form_state, $form_id) {
+  $form['#attributes']['autocomplete'] = 'off';
+  $id = 'webform_client_form_' . variable_get('webform_savings', 48);
+  if ($form_id == $id) {
+    $form['#attached']['js'][] = drupal_get_path('module', 'savingsupport') . '/js/savingsupport.js';
+    $form['#validate'][] = 'savingsupport_validate';
+    $form['#submit'][] = 'savingsupport_submit';
+  }
+  $id = 'webform_client_form_' . variable_get('webform_activate', 47);
+  if ($form_id == $id) {
+    $form['#attached']['js'][] = drupal_get_path('module', 'savingsupport') . '/js/activate.js';
+    $form['#validate'][] = 'activecard_validate';
+  }
+}
+
+/**
+ * Menu callback for the config page.
+ */
+function savingsupport_validate($form, &$form_state) {
+  $webservice_user = variable_get('savingsupport_generate_service_user', "");
+  $webservice_pass = variable_get('savingsupport_generate_service_pass', "");
+
+  $_SESSION['inside_check'] = 0;
+  $_SESSION['saving_check'] = 0;
+
+  $inside_check = check_plain($form_state['values']['submitted']['select_one_or_both']['Q15664_A25502']['Yes']);
+  $saving_check = check_plain($form_state['values']['submitted']['select_one_or_both']['Q15667_A25508']['Yes']);
+  $name_savings = check_plain($form_state['values']['submitted']['savings_contact_information']['personal_information']['Q10005_A10005']);
+
+  $phone1 = $phone2 = $phone3 = "";
+  if (isset($form_state['values']['submitted']['savings_contact_information']['personal_information']['phone_number_optional']['Q99999_A99999']) ||
+      isset($form_state['values']['submitted']['savings_contact_information']['personal_information']['phone_number_optional']['Q99998_A99998']) ||
+      isset($form_state['values']['submitted']['savings_contact_information']['personal_information']['phone_number_optional']['Q99997_A99997'])) {
+    $phone1 = check_plain($form_state['values']['submitted']['savings_contact_information']['personal_information']['phone_number_optional']['Q99999_A99999']);
+    $phone2 = check_plain($form_state['values']['submitted']['savings_contact_information']['personal_information']['phone_number_optional']['Q99998_A99998']);
+    $phone3 = check_plain($form_state['values']['submitted']['savings_contact_information']['personal_information']['phone_number_optional']['Q99997_A99997']);
+  }
+
+  $_SESSION['full_phone'] = "$phone1-$phone2-$phone3";
+
+  if ($_SESSION['full_phone'] != "--") {
+    $form_state['values']['submitted']['full_phone'] = $_SESSION['full_phone'];
+  }
+  if ($name_savings !== "0") {
+    $_SESSION['name_savings'] = $name_savings;
+  }
+  if ($inside_check === "Yes") {
+    $_SESSION['inside_check'] = 1;
+  }
+
+  if ($saving_check === "Yes") {
+    $_SESSION['saving_check'] = 1;
+    $memeber_number = -1;
+    $path = drupal_get_path("module", "savingsupport");
+    $path .= "/membernumberserviceg.wsdl";
+    $client = new SoapClient($path, array(
+      'trace' => TRUE,
+      'soap_version' => SOAP_1_2,
+        )
+    );
+    $parameters['login'] = $webservice_user;
+    $parameters['password'] = $webservice_pass;
+
+    $response = $client->GetMemberNumber(array(
+      'UserName' => $webservice_user,
+      'Password' => $webservice_pass));
+    $return_code = check_plain($response->GetMemberNumberResult->ReturnCode);
+
+    if ($return_code === "0") {
+      $memeber_number = check_plain($response->GetMemberNumberResult->MemeberNumber);
+      $form_state['values']['submitted']['memebernumber'] = $memeber_number;
+    }
+    else {
+      $form_state['values']['submitted']['memebernumber'] = 0;
+      $memeber_number = 0;
+      form_set_error('memebernumber', t("Error generating the member code, please try later!"));
+    }
+    $_SESSION['MemeberNumber'] = $memeber_number;
+  }
+}
+
+/**
+ * Invoke the hook submit to the call of the savings support form.
+ */
+function savingsupport_submit($form, &$form_state) {
+  if (isset($form_state['values']['submitted'][3][0]) && !isset($form_state['values']['submitted'][40][0])) {
+    $form_state['redirect'] = 'thank-you-savings';
+  }
+  if (!isset($form_state['values']['submitted'][3][0]) && isset($form_state['values']['submitted'][40][0])) {
+    $form_state['redirect'] = 'thank-you-support';
+  }
+  if (isset($form_state['values']['submitted'][3][0]) && isset($form_state['values']['submitted'][40][0])) {
+    $form_state['redirect'] = 'thank-you-savings-support';
+  }
+}
+
+/**
+ * Invoke hook presave, to save the member number.
+ */
+function savingsupport_webform_component_presave(&$component) {
+  if (isset($_SESSION['MemeberNumber'])) {
+    $component['memebernumber'] = $_SESSION['MemeberNumber'];
+  }
+  if (isset($_SESSION['full_phone'])) {
+    $component['full_phone'] = $_SESSION['full_phone'];
+  }
+}
+
+/* * ********************************************************************************************* */
+
+/**
+ * Send the options boxes to display the correct message in the thanks saving.
+ */
+function activecard_validate($form, &$form_state) {
+  $webservice_user = variable_get('savingsupport_validate_service_user', "");
+  $webservice_pass = variable_get('savingsupport_validate_service_pass', "");
+
+  $code = 0;
+  $field_code = 'Q15382_A24743';
+
+  $member_code = check_plain($form_state['values']['submitted']['Q15382_A24743']);
+  if (is_numeric($member_code) && strlen($member_code) === 11) {
+    $path = drupal_get_path("module", "savingsupport");
+    $path .= "/externalactivation.wsdl";
+    $client = new SoapClient($path, array(
+      'trace' => TRUE,
+      'soap_version' => SOAP_1_2,
+        )
+    );
+
+    $response = $client->Activate(array(
+      'Username' => $webservice_user,
+      'Password' => $webservice_pass,
+      'MemberNumber' => $member_code));
+
+    $active_resultcode = check_plain($response->ActivateResult->ResponseCode);
+    if ($active_resultcode !== "0") {
+      switch ($active_resultcode) {
+        case "2":
+          form_set_error($field_code, t("There was an error in activating the card ID number you entered. Please check it and try again."));
+          break;
+
+        case "4":
+          form_set_error($field_code, t("We are sorry. This card ID number is already activated."));
+          break;
+
+        default:
+          form_set_error($field_code, t("There was an error in activating the card ID number you entered. Please check it and try again."));
+          break;
+      }
+    }
+  }
+  else {
+    form_set_error($field_code, "There was an error in activating the card ID number you entered. Please check it and try again.");
+  }
+}

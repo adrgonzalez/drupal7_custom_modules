@@ -1,0 +1,37 @@
+<?php
+/**
+ * @file
+ * module to create my_guide page
+ */
+
+global $base_url;
+
+/**
+ * Implements hook_menu().
+ */
+function my_guide_menu() {
+  $items['myGuide'] = array(
+    'title' => 'Title of page',
+    'access arguments' => array('access content'),
+    'page callback' => 'module_callback',
+  );
+  return $items;
+}
+
+/**
+ * Implements hook_theme().
+ */
+function my_guide_theme() {
+  return array(
+    'myGuide' => array(
+      'template' => 'template/my_guide',
+    ),
+  );
+}
+
+/**
+ * Implements menu callback.
+ */
+function module_callback() {
+  return theme('myGuide');
+}

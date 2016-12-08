@@ -1,0 +1,81 @@
+<wsdl:definitions xmlns:soap="http://schemas.xmlsoap.org/wsdl/soap/" xmlns:tm="http://microsoft.com/wsdl/mime/textMatching/" xmlns:soapenc="http://schemas.xmlsoap.org/soap/encoding/" xmlns:mime="http://schemas.xmlsoap.org/wsdl/mime/" xmlns:tns="http://www.trialcard.com/" xmlns:s="http://www.w3.org/2001/XMLSchema" xmlns:soap12="http://schemas.xmlsoap.org/wsdl/soap12/" xmlns:http="http://schemas.xmlsoap.org/wsdl/http/" xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/" targetNamespace="http://www.trialcard.com/">
+    <wsdl:types>
+        <s:schema elementFormDefault="qualified" targetNamespace="http://www.trialcard.com/">
+            <s:element name="GetMemberNumber">
+                <s:complexType>
+                    <s:sequence>
+                        <s:element minOccurs="0" maxOccurs="1" name="UserName" type="s:string"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="Password" type="s:string"/>
+                    </s:sequence>
+                </s:complexType>
+            </s:element>
+            <s:element name="GetMemberNumberResponse">
+                <s:complexType>
+                    <s:sequence>
+                        <s:element minOccurs="0" maxOccurs="1" name="GetMemberNumberResult" type="tns:GetMemberNumberReturn"/>
+                    </s:sequence>
+                </s:complexType>
+            </s:element>
+            <s:complexType name="GetMemberNumberReturn">
+                <s:complexContent mixed="false">
+                    <s:extension base="tns:Base">
+                        <s:sequence>
+                            <s:element minOccurs="0" maxOccurs="1" name="MemeberNumber" type="s:string"/>
+                        </s:sequence>
+                    </s:extension>
+                </s:complexContent>
+            </s:complexType>
+            <s:complexType name="Base">
+                <s:sequence>
+                    <s:element minOccurs="1" maxOccurs="1" name="ReturnCode" type="s:int"/>
+                    <s:element minOccurs="0" maxOccurs="1" name="ReturnDescription" type="s:string"/>
+                </s:sequence>
+            </s:complexType>
+        </s:schema>
+    </wsdl:types>
+    <wsdl:message name="GetMemberNumberSoapIn">
+        <wsdl:part name="parameters" element="tns:GetMemberNumber"/>
+    </wsdl:message>
+    <wsdl:message name="GetMemberNumberSoapOut">
+        <wsdl:part name="parameters" element="tns:GetMemberNumberResponse"/>
+    </wsdl:message>
+    <wsdl:portType name="MemberNumberServiceGSoap">
+        <wsdl:operation name="GetMemberNumber">
+            <wsdl:documentation xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">GetMemberNumber</wsdl:documentation>
+            <wsdl:input message="tns:GetMemberNumberSoapIn"/>
+            <wsdl:output message="tns:GetMemberNumberSoapOut"/>
+        </wsdl:operation>
+    </wsdl:portType>
+    <wsdl:binding name="MemberNumberServiceGSoap" type="tns:MemberNumberServiceGSoap">
+        <soap:binding transport="http://schemas.xmlsoap.org/soap/http"/>
+        <wsdl:operation name="GetMemberNumber">
+            <soap:operation soapAction="http://www.trialcard.com/GetMemberNumber" style="document"/>
+            <wsdl:input>
+                <soap:body use="literal"/>
+            </wsdl:input>
+            <wsdl:output>
+                <soap:body use="literal"/>
+            </wsdl:output>
+        </wsdl:operation>
+    </wsdl:binding>
+    <wsdl:binding name="MemberNumberServiceGSoap12" type="tns:MemberNumberServiceGSoap">
+        <soap12:binding transport="http://schemas.xmlsoap.org/soap/http"/>
+        <wsdl:operation name="GetMemberNumber">
+            <soap12:operation soapAction="http://www.trialcard.com/GetMemberNumber" style="document"/>
+            <wsdl:input>
+                <soap12:body use="literal"/>
+            </wsdl:input>
+            <wsdl:output>
+                <soap12:body use="literal"/>
+            </wsdl:output>
+        </wsdl:operation>
+    </wsdl:binding>
+    <wsdl:service name="MemberNumberServiceG">
+        <wsdl:port name="MemberNumberServiceGSoap" binding="tns:MemberNumberServiceGSoap">
+            <soap:address location="http://services.trialcard.com/externalmembernumberservice/membernumberserviceg.asmx"/>
+        </wsdl:port>
+        <wsdl:port name="MemberNumberServiceGSoap12" binding="tns:MemberNumberServiceGSoap12">
+            <soap12:address location="http://services.trialcard.com/externalmembernumberservice/membernumberserviceg.asmx"/>
+        </wsdl:port>
+    </wsdl:service>
+</wsdl:definitions>

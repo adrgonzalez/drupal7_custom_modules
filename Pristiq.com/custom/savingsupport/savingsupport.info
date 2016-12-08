@@ -1,0 +1,14 @@
+name = Saving & Support
+description = "Create the relationship between JS and Saving & Support webform page, connection to web service (savings and activate member card)"
+package = Custom Pristiq 2014
+core = 7.x
+configure = admin/config/savingsupport/webform
+; Requires menu_build_tree() conditions; available after 7.10.
+; @see http://drupal.org/node/1025582
+dependencies[] = system (>7.10)
+
+; Information added on 2014-01-29
+version = "7.x-1.0"
+core = "7.x"
+project = "saving_support"
+datestamp = "1359651687"

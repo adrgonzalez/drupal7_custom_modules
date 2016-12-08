@@ -1,0 +1,173 @@
+<wsdl:definitions xmlns:soap="http://schemas.xmlsoap.org/wsdl/soap/" xmlns:tm="http://microsoft.com/wsdl/mime/textMatching/" xmlns:soapenc="http://schemas.xmlsoap.org/soap/encoding/" xmlns:mime="http://schemas.xmlsoap.org/wsdl/mime/" xmlns:tns="http://www.trialcard.com/ExternalActivation" xmlns:s="http://www.w3.org/2001/XMLSchema" xmlns:soap12="http://schemas.xmlsoap.org/wsdl/soap12/" xmlns:http="http://schemas.xmlsoap.org/wsdl/http/" xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/" targetNamespace="http://www.trialcard.com/ExternalActivation">
+    <wsdl:types>
+        <s:schema elementFormDefault="qualified" targetNamespace="http://www.trialcard.com/ExternalActivation">
+            <s:element name="Validate">
+                <s:complexType>
+                    <s:sequence>
+                        <s:element minOccurs="0" maxOccurs="1" name="Username" type="s:string"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="Password" type="s:string"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="MemberNumber" type="s:string"/>
+                    </s:sequence>
+                </s:complexType>
+            </s:element>
+            <s:element name="ValidateResponse">
+                <s:complexType>
+                    <s:sequence>
+                        <s:element minOccurs="1" maxOccurs="1" name="ValidateResult" type="tns:ValidateReturn"/>
+                    </s:sequence>
+                </s:complexType>
+            </s:element>
+            <s:complexType name="ValidateReturn">
+                <s:sequence>
+                    <s:element minOccurs="1" maxOccurs="1" name="ResponseCode" type="s:int"/>
+                    <s:element minOccurs="0" maxOccurs="1" name="ResponseDescription" type="s:string"/>
+                </s:sequence>
+            </s:complexType>
+            <s:element name="Activate">
+                <s:complexType>
+                    <s:sequence>
+                        <s:element minOccurs="0" maxOccurs="1" name="Username" type="s:string"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="Password" type="s:string"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="MemberNumber" type="s:string"/>
+                    </s:sequence>
+                </s:complexType>
+            </s:element>
+            <s:element name="ActivateResponse">
+                <s:complexType>
+                    <s:sequence>
+                        <s:element minOccurs="1" maxOccurs="1" name="ActivateResult" type="tns:ActivateReturn"/>
+                    </s:sequence>
+                </s:complexType>
+            </s:element>
+            <s:complexType name="ActivateReturn">
+                <s:sequence>
+                    <s:element minOccurs="1" maxOccurs="1" name="ResponseCode" type="s:int"/>
+                    <s:element minOccurs="0" maxOccurs="1" name="ResponseDescription" type="s:string"/>
+                </s:sequence>
+            </s:complexType>
+            <s:element name="ActivateWithGroup">
+                <s:complexType>
+                    <s:sequence>
+                        <s:element minOccurs="0" maxOccurs="1" name="Username" type="s:string"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="Password" type="s:string"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="MemberNumber" type="s:string"/>
+                    </s:sequence>
+                </s:complexType>
+            </s:element>
+            <s:element name="ActivateWithGroupResponse">
+                <s:complexType>
+                    <s:sequence>
+                        <s:element minOccurs="1" maxOccurs="1" name="ActivateWithGroupResult" type="tns:ActivateReturnWithGroup"/>
+                    </s:sequence>
+                </s:complexType>
+            </s:element>
+            <s:complexType name="ActivateReturnWithGroup">
+                <s:sequence>
+                    <s:element minOccurs="1" maxOccurs="1" name="ResponseCode" type="s:int"/>
+                    <s:element minOccurs="0" maxOccurs="1" name="ResponseDescription" type="s:string"/>
+                    <s:element minOccurs="0" maxOccurs="1" name="GroupNumber" type="s:string"/>
+                </s:sequence>
+            </s:complexType>
+        </s:schema>
+    </wsdl:types>
+    <wsdl:message name="ValidateSoapIn">
+        <wsdl:part name="parameters" element="tns:Validate"/>
+    </wsdl:message>
+    <wsdl:message name="ValidateSoapOut">
+        <wsdl:part name="parameters" element="tns:ValidateResponse"/>
+    </wsdl:message>
+    <wsdl:message name="ActivateSoapIn">
+        <wsdl:part name="parameters" element="tns:Activate"/>
+    </wsdl:message>
+    <wsdl:message name="ActivateSoapOut">
+        <wsdl:part name="parameters" element="tns:ActivateResponse"/>
+    </wsdl:message>
+    <wsdl:message name="ActivateWithGroupSoapIn">
+        <wsdl:part name="parameters" element="tns:ActivateWithGroup"/>
+    </wsdl:message>
+    <wsdl:message name="ActivateWithGroupSoapOut">
+        <wsdl:part name="parameters" element="tns:ActivateWithGroupResponse"/>
+    </wsdl:message>
+    <wsdl:portType name="ExternalActivationSoap">
+        <wsdl:operation name="Validate">
+            <wsdl:input message="tns:ValidateSoapIn"/>
+            <wsdl:output message="tns:ValidateSoapOut"/>
+        </wsdl:operation>
+        <wsdl:operation name="Activate">
+            <wsdl:input message="tns:ActivateSoapIn"/>
+            <wsdl:output message="tns:ActivateSoapOut"/>
+        </wsdl:operation>
+        <wsdl:operation name="ActivateWithGroup">
+            <wsdl:input message="tns:ActivateWithGroupSoapIn"/>
+            <wsdl:output message="tns:ActivateWithGroupSoapOut"/>
+        </wsdl:operation>
+    </wsdl:portType>
+    <wsdl:binding name="ExternalActivationSoap" type="tns:ExternalActivationSoap">
+        <soap:binding transport="http://schemas.xmlsoap.org/soap/http"/>
+        <wsdl:operation name="Validate">
+            <soap:operation soapAction="http://www.trialcard.com/ExternalActivation/Validate" style="document"/>
+            <wsdl:input>
+                <soap:body use="literal"/>
+            </wsdl:input>
+            <wsdl:output>
+                <soap:body use="literal"/>
+            </wsdl:output>
+        </wsdl:operation>
+        <wsdl:operation name="Activate">
+            <soap:operation soapAction="http://www.trialcard.com/ExternalActivation/Activate" style="document"/>
+            <wsdl:input>
+                <soap:body use="literal"/>
+            </wsdl:input>
+            <wsdl:output>
+                <soap:body use="literal"/>
+            </wsdl:output>
+        </wsdl:operation>
+        <wsdl:operation name="ActivateWithGroup">
+            <soap:operation soapAction="http://www.trialcard.com/ExternalActivation/ActivateWithGroup" style="document"/>
+            <wsdl:input>
+                <soap:body use="literal"/>
+            </wsdl:input>
+            <wsdl:output>
+                <soap:body use="literal"/>
+            </wsdl:output>
+        </wsdl:operation>
+    </wsdl:binding>
+    <wsdl:binding name="ExternalActivationSoap12" type="tns:ExternalActivationSoap">
+        <soap12:binding transport="http://schemas.xmlsoap.org/soap/http"/>
+        <wsdl:operation name="Validate">
+            <soap12:operation soapAction="http://www.trialcard.com/ExternalActivation/Validate" style="document"/>
+            <wsdl:input>
+                <soap12:body use="literal"/>
+            </wsdl:input>
+            <wsdl:output>
+                <soap12:body use="literal"/>
+            </wsdl:output>
+        </wsdl:operation>
+        <wsdl:operation name="Activate">
+            <soap12:operation soapAction="http://www.trialcard.com/ExternalActivation/Activate" style="document"/>
+            <wsdl:input>
+                <soap12:body use="literal"/>
+            </wsdl:input>
+            <wsdl:output>
+                <soap12:body use="literal"/>
+            </wsdl:output>
+        </wsdl:operation>
+        <wsdl:operation name="ActivateWithGroup">
+            <soap12:operation soapAction="http://www.trialcard.com/ExternalActivation/ActivateWithGroup" style="document"/>
+            <wsdl:input>
+                <soap12:body use="literal"/>
+            </wsdl:input>
+            <wsdl:output>
+                <soap12:body use="literal"/>
+            </wsdl:output>
+        </wsdl:operation>
+    </wsdl:binding>
+    <wsdl:service name="ExternalActivation">
+        <wsdl:port name="ExternalActivationSoap" binding="tns:ExternalActivationSoap">
+            <soap:address location="http://services.trialcard.com/externalactivation/externalactivation.asmx"/>
+        </wsdl:port>
+        <wsdl:port name="ExternalActivationSoap12" binding="tns:ExternalActivationSoap12">
+            <soap12:address location="http://services.trialcard.com/externalactivation/externalactivation.asmx"/>
+        </wsdl:port>
+    </wsdl:service>
+</wsdl:definitions>
