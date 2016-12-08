@@ -1,0 +1,544 @@
+<?php
+
+/**
+ * @file
+ * Render an administrative menu as a dropdown menu at the top of the window.
+ */
+
+/**
+ * Implements hook_menu().
+ */
+function ingreso_mezcla_alimentos_menu() {
+    $items = array();
+// Module settings.
+    $items['admin/content/inventario/ingreso_mezcla_alimentos'] = array(
+        'title' => 'Ingreso de mezcla para alimentos',
+        'description' => 'Ingreso de mezcla para alimentos.',
+        'type' => MENU_NORMAL_ITEM,
+        'page callback' => 'system_ingreso_mezcla_alimentos',
+        'access arguments' => array('entrada materias'),
+    );
+    $items['admin/content/inventario/ingreso_mezcla_alimentos/edit'] = array(
+        'title' => 'Editar ingreso de mezcla para alimentos',
+        'description' => 'Editar ingreso de mezcla para alimentos.',
+        'type' => MENU_NORMAL_ITEM,
+        'page callback' => 'system_ingreso_mezcla_alimentos_edit',
+        'access arguments' => array('entrada materias'),
+    );
+    $items['admin/content/inventario/mezcla_alimentos'] = array(
+        'title' => 'Mezcla para alimentos',
+        'description' => 'Mezcla para alimentos.',
+        'type' => MENU_CALLBACK,
+        'page callback' => 'mezcla_alimentos_lista',
+        'access arguments' => array('entrada materias'),
+    );
+    $items['admin/content/inventario/mezcla_alimentos/edit'] = array(
+        'title' => 'Edición de la mezcla para alimentos',
+        'description' => 'Edición de la mezcla para alimentos.',
+        'type' => MENU_CALLBACK,
+        'page callback' => 'edit_mezcla_alimentos',
+        'access arguments' => array('entrada materias'),
+    );
+    return $items;
+}
+
+/* * ************************************************************************* */
+
+function es_alimento($nombre) {
+    $alimento = 0;
+    $alimento = db_query("SELECT alimentos_preparados_id FROM alimentos_preparados 
+                where nombre like ('%$nombre%')")->fetchField();
+    //drupal_set_message("alimento: $alimento");
+    return $alimento;
+}
+
+function system_ingreso_mezcla_alimentos() {
+    return drupal_get_form('ingreso_mezcla_alimentos_form');
+}
+
+function ingreso_mezcla_alimentos_form($form, &$form_state) {
+    $materias_prima_list = array();
+    $options = array();
+    $materias_primas = db_query("SELECT materias_primas_id as id, nombre, estado
+                                FROM materias_primas
+                                UNION
+                                SELECT alimentos_preparados_id as id, nombre, estado
+                                FROM alimentos_preparados
+                                WHERE materia_prima = 1
+                                ORDER BY nombre");
+    $alimentos = db_query("SELECT * FROM alimentos_preparados where estado=1");
+    $options = array();
+    foreach ($alimentos as $alimento) {
+        if ($alimento) {
+            $options[$alimento->alimentos_preparados_id] = $alimento->nombre;
+        }
+    }
+    $form = array();
+    $form['alimentos'] = array(
+        '#type' => 'select',
+        '#options' => $options,
+        '#title' => "Nombre del alimento preparado:",
+        '#required' => TRUE,
+        '#description' => t('Ingrese el nombre del alimento preparado.'),
+    );
+    /* $form['costo'] = array(
+      '#type' => 'textfield',
+      '#size' => 30,
+      '#maxlength' => 100,
+      '#title' => "Costo del alimento preparado por unidad de venta:",
+      '#required' => TRUE,
+      '#description' => t('Ingrese el costo del alimento preparado por unidad.'),
+      '#suffix' => '<h2>Seleccione la(s) materia(s) que conforman el alimento</h2><br/>'
+      ); */
+    foreach ($materias_primas as $materia_prima) {
+        if ($materia_prima) {
+            if ($materia_prima->estado) {
+                $materias_prima_list[] = $materia_prima->nombre;
+                //$options[$materia_prima->materias_primas_id] = $materia_prima->nombre;
+                //$materia_prima->materias_primas_id] = ;
+                $materia_prima_nombre = str_replace(' ', '_', $materia_prima->nombre);
+                $form[$materia_prima_nombre] = array(
+                    '#type' => 'checkbox',
+                    //'#options' => $options,
+                    '#title' => $materia_prima->nombre,
+                    '#required' => false,
+                        //'#description' => "Seleccione la(s) materia(s) que conforman el alimento.",
+                        //'#attributes' => array('class' => 'percentage', 'id' => 'txb_percentage'),
+                );
+                $form['cant_' . $materia_prima_nombre] = array(
+                    '#type' => 'textfield',
+                    '#size' => 30,
+                    '#maxlength' => 100,
+                    '#title' => es_alimento($materia_prima_nombre) ? 'Cantidad de la materia EN QUINTALES que requiere el alimento:' : "Cantidad de la materia que requiere el alimento:",
+                    '#required' => false,
+                    '#description' => es_alimento($materia_prima_nombre) ? "Ingrese el cantidad de la materia prima EN QUINTALES." : "Ingrese el cantidad de la materia prima.",
+                        //'#attributes' => array('class' => 'percentage', 'id' => 'txb_percentage'),
+                );
+            }
+        }
+    }
+    $form['submit'] = array(
+        '#type' => 'submit',
+        '#value' => "Guardar",
+    );
+    return $form;
+}
+
+function ingreso_mezcla_alimentos_form_validate($form, &$form_state) {
+    
+}
+
+function ingreso_mezcla_alimentos_form_submit($form, &$form_state) {
+    $flag = 0;
+    $cant_insert = 0;
+    $materias_primas = db_query("SELECT materias_primas_id as id, nombre, estado, fecha as materia_prima
+                                FROM materias_primas
+                                UNION
+                                SELECT alimentos_preparados_id as id, nombre, estado, materia_prima as materia_prima
+                                FROM alimentos_preparados
+                                WHERE materia_prima = 1
+                                ORDER BY nombre");
+    $id_alimento = $form_state['values']['alimentos'];
+    $materias = array();
+    foreach ($materias_primas as $materia_prima) {
+        if ($materia_prima) {
+            if ($form_state['values'][$materia_prima->nombre]) {
+                $materia_prima_nombre = str_replace(' ', '_', $materia_prima->nombre);
+                $materias[] = $form_state['values'][$materia_prima_nombre];
+                $cant_insert++;
+                //drupal_set_message("$materia_prima->nombre, $materia_prima->materias_primas_id");
+                //$materias_prima_list[$materia_prima->materias_primas_id] = $materia_prima->nombre;
+                //$materias_prima_list[] = $materia_prima->materias_primas_id;
+                //$name = $form_state['values']['name'];
+                //$costo = $form_state['values']['costo'];
+                $id = 'cant_' . $materia_prima_nombre;
+                $cantidad = $form_state['values'][$id];
+                //drupal_set_message("$name, $costo, $id, $cantidad");
+                if ($materia_prima->materia_prima == 1) {
+                    if (db_query("INSERT INTO materias_primas_alimentos (materias_primas_id, alimentos_preparados_id, 
+                                    cantidad_materia_prima, alimento_materias_primas_id) 
+                                    values(0, $id_alimento, $cantidad, " . $materia_prima->id . ")")) {
+                        $flag++;
+                    }
+                } else {
+                    if (db_query("INSERT INTO materias_primas_alimentos (materias_primas_id, alimentos_preparados_id, 
+                                    cantidad_materia_prima, alimento_materias_primas_id) 
+                                    values(" . $materia_prima->id . ", $id_alimento, $cantidad, 0)")) {
+                        $flag++;
+                    }
+                }
+            }
+        }
+    }
+    $materias_separated = implode(", ", $materias);
+    if ($cant_insert == $flag) {
+        drupal_set_message("El alimento $materias_separated fue guardado existosamente!");
+        drupal_goto('admin/content/inventario/alimentos');
+    } else {
+        drupal_set_message("Error al guardar el alimento $materias_separated, por favor intente de nuevo!", 'error');
+        drupal_goto('admin/content/inventario/ingreso_materias_alimentos');
+    }
+}
+
+/* * ************************************************************************** */
+
+function mezcla_alimentos_lista() {
+    // Build the header for the report table.
+    $header = array(t('Edit'), t('Materia Prima'), t('Cantidad para mezclar'),);
+    // Build the header to the CSV export.
+    $csv_rows = array(array(t('Edit'), t('Materia Prima'), t('Cantidad para mezclar')));
+    $array_rows = array();
+    $rows = array();
+    $nombre = "";
+
+    if (arg(3) == "mezcla_alimentos" && arg(4) > 0) {
+        $alimentos_preparados_id = arg(4);
+        $nombre = db_query("SELECT nombre from alimentos_preparados
+                                where alimentos_preparados_id=$alimentos_preparados_id ")->fetchField();
+        /* $results = db_query("SELECT mp.nombre as nombre, ap.nombre as alimento, mpa.cantidad_materia_prima as cant_mezcla,
+          mpa.alimentos_preparados_id as alimentos_preparados_id, mp.materias_primas_id as materias_primas_id
+          FROM materias_primas_alimentos as mpa
+          inner join materias_primas as mp on mpa.materias_primas_id=mp.materias_primas_id
+          inner join alimentos_preparados as ap on mpa.alimentos_preparados_id=ap.alimentos_preparados_id
+          where mpa.alimentos_preparados_id=$alimentos_preparados_id order by mp.nombre"); */
+        $results = db_query("SELECT ap.nombre as nombre1, ap.nombre as alimento, mpa.cantidad_materia_prima as cant_mezcla,
+                                mpa.alimentos_preparados_id as alimentos_preparados_id, ap.alimentos_preparados_id as materias_primas_id
+                                FROM materias_primas_alimentos as mpa
+                                inner join alimentos_preparados as ap on ap.alimentos_preparados_id = mpa.alimento_materias_primas_id
+                                where mpa.alimentos_preparados_id=$alimentos_preparados_id               
+                                UNION
+                                SELECT mp.nombre as nombre, ap.nombre as alimento, mpa.cantidad_materia_prima as cant_mezcla,
+                                mpa.alimentos_preparados_id as alimentos_preparados_id, mp.materias_primas_id as materias_primas_id
+                                FROM materias_primas_alimentos as mpa
+                                inner join materias_primas as mp on mpa.materias_primas_id=mp.materias_primas_id
+                                inner join alimentos_preparados as ap on mpa.alimentos_preparados_id=ap.alimentos_preparados_id
+                                where mpa.alimentos_preparados_id=$alimentos_preparados_id 
+                                order by nombre1");
+        foreach ($results as $result) {
+            if ($result) {
+                /* $id_alimento = $result->alimentos_preparados_id;
+                  $cant_actual = db_query("SELECT cantidad_actual FROM alimentos_preparados_inventario
+                  where alimentos_preparados_id=$id_alimento order by alimentos_preparados_inventario_id desc")->fetchField();
+                  if (!$cant_actual)
+                  $cant_actual = 0;
+                  if ($cant_actual < $result->cantidad_reorden) {
+                  $pre = '<span style="color: red">';
+                  $pos = '</span>';
+                  } */
+                $rows[] = array(
+                    l(('Editar'), 'admin/content/inventario/mezcla_alimentos/edit/'
+                            . $result->materias_primas_id . '/'
+                            . $result->alimentos_preparados_id),
+                    //$result->alimento,
+                    $result->nombre1,
+                    $result->cant_mezcla
+                );
+                $csv_rows[] = array(
+                    //$result->alimento,
+                    $result->nombre1,
+                    $result->cant_mezcla
+                );
+            }
+        }
+        //print_r($rows);
+        // Cache the CSV export.
+        //$csv_data = uc_reports_store_csv('matrias primas', $csv_rows);
+        // Build the page output holding the form, table, and CSV export link.
+        $output =  "<h4 style='color: #000; font-size: 18px; font-style: italic; font-weight: normal;'>
+                    El alimento preparado es: <strong>$nombre</strong> y esta compuesto por:</h3>" . 
+                    theme('table', array(
+                    'header' => $header,
+                    'rows' => $rows,
+                    'attributes' => array('class' => array('mytable')),
+                    'sort' => 'asc'
+                ))
+                //. '<div class="uc-reports-links">' . l(t('Export to CSV file.'), 'admin/store/reports/getcsv/' . $csv_data['report'] . '/' . $csv_data['user']) . '</div>'
+                . '<br /><div class="uc-reports-links">' . l('Ingresar un nuevo alimento »', 'admin/content/inventario/registro_alimentos') . '</div>'
+                . '<br /><div class="uc-reports-links">' . l('Agregar una nueva materia prima »', 'admin/content/inventario/ingreso_mezcla_alimentos') . '</div>'
+                . '<br /><div class="uc-reports-links">' . l('« volver al listado de alimentos', 'admin/content/inventario/alimentos') . '</div>';
+        /* $output = theme('table', $header, $rows, array('width' => '100%', 'class' => 'uc-sales-table', 'style' => 'text-align: center'))
+          . '<div class="uc-reports-links">' . l(t('Export to CSV file.'), 'admin/store/reports/getcsv/' . $csv_data['report'] . '/' . $csv_data['user']) . '</div>'
+          . '<br /><div class="uc-reports-links">' . l('Ingresar una nueva materia prima', 'admin/content/inventarios/registro_materias') . '</div>';
+          drupal_set_message(print_r($rows)); */
+        return $output;
+        //return drupal_get_form('materias_lista_form');
+    } else {
+        drupal_goto('admin/content/inventario/alimentos');
+    }
+}
+
+/* * *************************************************************************** */
+
+function edit_mezcla_alimentos() {
+    return drupal_get_form('edit_mezcla_alimentos_form');
+}
+
+function edit_mezcla_alimentos_form($form, &$form_state) {
+    if (arg(4) == "edit" && arg(5) > 0 && arg(6) > 0) {
+        $id_mezcla = arg(5);
+        $id_alimento = arg(6);
+        $cantidad_materia_prima = 0;
+        $materia_prima = 0;
+
+        //$alimento = 0;
+        $alimento = db_query("SELECT ap.alimentos_preparados_id FROM alimentos_preparados ap
+                inner join materias_primas_alimentos mpa on ap.alimentos_preparados_id = mpa.alimento_materias_primas_id
+                where ap.alimentos_preparados_id=$id_mezcla and ap.materia_prima=1
+                and mpa.alimento_materias_primas_id=$id_mezcla and mpa.materias_primas_id=0")->fetchField();
+
+        //drupal_set_message(($alimento == $id_mezcla) ? "materia" : "no materia" ."--- " . (int)$alimento . " -- alimento: ---" . count($alimento));
+        //drupal_set_message("alimento: $alimento");
+
+        /* FALTA VER EL UPDATE DE LOS DEMAS PARTES QUE SE OCUPE DIFERENCIAR ENTRE
+         * ALIMENTO PREPARADO Q SE UTILIZA COMO MATERIA PRIMA...
+         */
+
+        if ($alimento == $id_mezcla) {
+            //drupal_set_message("alimento");
+            $cantidad_materia_prima = db_query("SELECT cantidad_materia_prima FROM materias_primas_alimentos
+                where alimento_materias_primas_id=$id_mezcla and alimentos_preparados_id=$id_alimento")->fetchField();
+            $materia_prima = db_query("SELECT nombre FROM alimentos_preparados
+                where alimentos_preparados_id=$id_mezcla")->fetchField();
+        } else {
+            //drupal_set_message("materia");
+            $cantidad_materia_prima = db_query("SELECT cantidad_materia_prima FROM materias_primas_alimentos
+                where materias_primas_id=$id_mezcla and alimentos_preparados_id=$id_alimento")->fetchField();
+            $materia_prima = db_query("SELECT nombre FROM materias_primas
+                where materias_primas_id=$id_mezcla")->fetchField();
+        }
+        $unidades = array();
+        $form = array();
+        $form['cant_mezcla'] = array(
+            '#type' => 'textfield',
+            '#size' => 30,
+            '#maxlength' => 100,
+            '#title' => "Cantidad de mezcla para el alimento:",
+            '#required' => TRUE,
+            '#default_value' => $cantidad_materia_prima,
+            '#description' => t('Ingrese Cantidad de mezcla para el alimento.'),
+            '#prefix' => "<b>Materia prima: $materia_prima</b>",
+                //'#suffix' => '</div>',
+        );
+        $form['submit'] = array(
+            '#type' => 'submit',
+            '#value' => "Guardar",
+        );
+        return $form;
+    } else {
+        drupal_goto("admin/content/inventario/inventario/alimentos");
+    }
+}
+
+function edit_mezcla_alimentos_form_validate($form, &$form_state) {
+    
+}
+
+function edit_mezcla_alimentos_form_submit($form, &$form_state) {
+    if (arg(4) == "edit" && arg(5) > 0 && arg(6) > 0) {
+        $id_materia = arg(5);
+        $id_alimento = arg(6);
+        $cantidad_materia_prima = $form_state['values']['cant_mezcla'];
+
+        $alimento = db_query("SELECT ap.alimentos_preparados_id FROM alimentos_preparados ap
+                inner join materias_primas_alimentos mpa on ap.alimentos_preparados_id = mpa.alimento_materias_primas_id
+                where ap.alimentos_preparados_id=$id_materia and ap.materia_prima=1
+                and mpa.alimento_materias_primas_id=$id_materia and mpa.materias_primas_id=0")->fetchField();
+        if ($alimento == $id_materia) {
+            if (db_query("UPDATE materias_primas_alimentos set cantidad_materia_prima=$cantidad_materia_prima
+                        where alimento_materias_primas_id=$id_materia and alimentos_preparados_id=$id_alimento")) {
+                drupal_set_message("Se actualizo existosamente la cantidad!");
+            } else {
+                drupal_set_message("Error al actualizar la cantidad de la materia prima, por favor intente de nuevo!", 'error');
+            }
+        } else {
+            if (db_query("UPDATE materias_primas_alimentos set cantidad_materia_prima=$cantidad_materia_prima
+                        where materias_primas_id=$id_materia and alimentos_preparados_id=$id_alimento")) {
+                drupal_set_message("Se actualizo existosamente la cantidad!");
+            } else {
+                drupal_set_message("Error al actualizar la cantidad de la materia prima, por favor intente de nuevo!", 'error');
+            }
+        }
+        drupal_goto("admin/content/inventario/mezcla_alimentos/$id_alimento");
+    } else {
+        drupal_goto('admin/content/inventario/mezcla_alimentos');
+    }
+}
+
+/* * ************************************************************************* */
+
+function system_ingreso_mezcla_alimentos_edit() {
+    return drupal_get_form('ingreso_mezcla_alimentos_edit_form');
+}
+
+function ingreso_mezcla_alimentos_edit_form($form, &$form_state) {
+    if (arg(4) == "edit" && arg(5) > 0) {
+        $id_alimento = arg(5);
+        $materias_prima_list = array();
+        $options = array();
+        $name = db_query("SELECT nombre FROM alimentos_preparados where alimentos_preparados_id=$id_alimento")->fetchField();
+        //$materias_primas = db_query("SELECT * FROM materias_primas where materias_primas_id");
+        $materias_primas = db_query("SELECT materias_primas_id as id, nombre, estado, fecha as materia_prima
+                                FROM materias_primas
+                                UNION
+                                SELECT alimentos_preparados_id as id, nombre, estado, materia_prima as materia_prima
+                                FROM alimentos_preparados
+                                WHERE materia_prima = 1
+                                ORDER BY nombre");
+        $form = array();
+        $form['alimento'] = array(
+            '#type' => 'textfield',
+            '#title' => "Nombre del alimento preparado:",
+            '#default_value' => $name,
+            '#description' => t('Nombre del alimento preparado.'),
+            '#disable' => true
+        );
+        foreach ($materias_primas as $materia_prima) {
+            if ($materia_prima) {
+                $check = FALSE;
+                $materia_prima_nombre = str_replace(' ', '_', $materia_prima->nombre);
+                $materias_prima_list[] = $materia_prima_nombre;
+                $materias_primas_id = $materia_prima->id;
+                //$options[$materia_prima->materias_primas_id] = $materia_prima->nombre;
+                //$materia_prima->materias_primas_id] = ;
+                //drupal_set_message('id_alimento: '.$id_alimento . "--" . "materias_id: $materias_primas_id");
+                $mezcla = is_mezcla($materias_primas_id, $id_alimento);
+                //drupal_set_message("mezcla: $mezcla");
+                if ($mezcla > 0) {
+                    $check = TRUE;
+                }
+                if ($materia_prima->materia_prima == 1) {
+                    $cantidad_materia_prima = db_query("SELECT cantidad_materia_prima FROM materias_primas_alimentos
+                        where alimento_materias_primas_id=$materias_primas_id and alimentos_preparados_id = $id_alimento")->fetchField();
+                } else {
+                    $cantidad_materia_prima = db_query("SELECT cantidad_materia_prima FROM materias_primas_alimentos
+                        where materias_primas_id=$materias_primas_id and alimentos_preparados_id = $id_alimento")->fetchField();
+                }
+                $form[$materia_prima_nombre] = array(
+                    '#type' => 'checkbox',
+                    //'#options' => $options,
+                    '#title' => $materia_prima->nombre,
+                    '#default_value' => $materias_primas_id,
+                    '#required' => false,
+                    '#states' => array(
+                        // Mark this checkbox checked if the "more_info" textarea has something
+                        // in it, if it's 'filled'.
+                        'checked' => array(// Action to take: check the checkbox.
+                            ':input[name="' . $materia_prima_nombre . '"]' => array('filled' => $check),
+                        ),
+                    ),
+                        //'#description' => "Seleccione la(s) materia(s) que conforman el alimento.",
+                        //'#attributes' => array('class' => 'percentage', 'id' => 'txb_percentage'),
+                );
+                $form['cant_' . $materia_prima_nombre] = array(
+                    '#type' => 'textfield',
+                    '#size' => 30,
+                    '#maxlength' => 100,
+                    '#default_value' => $cantidad_materia_prima,
+                    //'#title' => "Cantidad de la materia que requiere el alimento:",
+                    '#title' => es_alimento($materia_prima->nombre) ? 'Cantidad de la materia EN QUINTALES que requiere el alimento:' :
+                            "Cantidad de la materia que requiere el alimento:",
+                    '#required' => false,
+                    //'#description' => "Ingrese el cantidad de la materia prima.",
+                    '#description' => es_alimento($materia_prima->nombre) ? "Ingrese el cantidad de la materia prima EN QUINTALES." :
+                            "Ingrese el cantidad de la materia prima.",
+                        //'#attributes' => array('class' => 'percentage', 'id' => 'txb_percentage'),
+                );
+            }
+        }
+        $form['submit'] = array(
+            '#type' => 'submit',
+            '#value' => "Guardar",
+        );
+        return $form;
+    } else {
+        drupal_goto("admin/content/inventario/inventario/alimentos");
+    }
+}
+
+function ingreso_mezcla_alimentos_edit_form_validate($form, &$form_state) {
+    
+}
+
+function ingreso_mezcla_alimentos_edit_form_submit($form, &$form_state) {
+    if (arg(4) == "edit" && arg(5) > 0) {
+        $flag = 0;
+        $cant_insert = 0;
+        $materias_primas = db_query("SELECT materias_primas_id as id, nombre, estado, fecha as materia_prima
+                                FROM materias_primas
+                                UNION
+                                SELECT alimentos_preparados_id as id, nombre, estado, materia_prima as materia_prima
+                                FROM alimentos_preparados
+                                WHERE materia_prima = 1
+                                ORDER BY nombre");
+        $materias = array();
+        $id_alimento = arg(5);
+        $name = db_query("SELECT nombre FROM alimentos_preparados where alimentos_preparados_id=$id_alimento")->fetchField();
+        if (db_query("DELETE FROM materias_primas_alimentos where alimentos_preparados_id=$id_alimento")) {
+            foreach ($materias_primas as $materia_prima) {
+                $materia_prima_nombre = str_replace(' ', '_', $materia_prima->nombre);
+                $esmateria = $materia_prima->materia_prima;
+                if ($materia_prima) {
+                    if ($form_state['values'][$materia_prima_nombre]) {
+                        $materias[] = $form_state['values'][$materia_prima_nombre];
+                        $cant_insert++;
+                        //drupal_set_message("nombre: $materia_prima->nombre, prima_id: $materia_prima->materias_primas_id");
+                        //$materias_prima_list[$materia_prima->materias_primas_id] = $materia_prima->nombre;
+                        //$materias_prima_list[] = $materia_prima->materias_primas_id;
+                        //$name = $form_state['values']['name'];
+                        //$costo = $form_state['values']['costo'];
+                        $id = 'cant_' . $materia_prima_nombre;
+                        $cantidad = $form_state['values'][$id];
+                        //drupal_set_message("esmateria: $esmateria");
+                        if ($materia_prima->materia_prima == 1) {
+                            if (db_query("INSERT INTO materias_primas_alimentos (materias_primas_id, alimentos_preparados_id, 
+                                    cantidad_materia_prima, alimento_materias_primas_id) 
+                                    values(0, $id_alimento, $cantidad, " . $materia_prima->id . ")")) {
+                                $flag++;
+                            }
+                        } else {
+                            if (db_query("INSERT INTO materias_primas_alimentos (materias_primas_id, alimentos_preparados_id, 
+                                    cantidad_materia_prima, alimento_materias_primas_id) 
+                                    values(" . $materia_prima->id . ", $id_alimento, $cantidad, 0)")) {
+                                $flag++;
+                            }
+                        }
+                    }
+                }
+            }
+            $materias_separated = implode(", ", $materias);
+            if ($cant_insert == $flag) {
+                drupal_set_message("El alimento $name fue editado existosamente!");
+                drupal_goto('admin/content/inventario/alimentos');
+            } else {
+                drupal_set_message("Error al editar el alimento $name, por favor intente de nuevo!", 'error');
+                drupal_goto('admin/content/inventario/alimentos');
+            }
+        } else {
+            drupal_set_message("Error al editar el alimento $name, por favor intente de nuevo!", 'error');
+            drupal_goto('admin/content/inventario/alimentos');
+        }
+    } else {
+        drupal_goto('admin/content/inventario/alimentos');
+    }
+}
+
+function is_mezcla($id_materia, $id_alimento) {
+    $res = 0;
+    $materias_primas_id = db_query("SELECT materias_primas_id FROM materias_primas_alimentos 
+                                    where alimentos_preparados_id=$id_alimento and materias_primas_id=$id_materia")->fetchField();
+    //drupal_set_message(($materias_primas_id > 0) ? $materias_primas_id : 0 .  "materias_primas_id: $materias_primas_id, id_materia: $id_materia, id_alimento: $id_alimento");
+    if ($materias_primas_id > 0) {
+        if ($materias_primas_id) {
+            $res = $materias_primas_id;
+        }
+    } else {
+        //drupal_set_message("res: $res");
+        $materias_primas_id = db_query("SELECT alimento_materias_primas_id FROM materias_primas_alimentos 
+                                    where alimentos_preparados_id=$id_alimento and alimento_materias_primas_id=$id_materia")->fetchField();
+        //drupal_set_message("$id_alimento - $id_materia res: $materias_primas_id");
+        if ($materias_primas_id) {
+            $res = $materias_primas_id;
+        }
+    }
+    return $res;
+}

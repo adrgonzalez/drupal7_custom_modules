@@ -1,0 +1,317 @@
+<?php
+
+/**
+ * @file
+ * Render an administrative menu as a dropdown menu at the top of the window.
+ */
+
+/**
+ * Implements hook_menu().
+ */
+function registro_alimentos_menu() {
+    $items = array();
+    // Module settings.
+    $items['admin/content/inventario/registro_alimentos'] = array(
+        'title' => 'Registro de Alimentos',
+        'description' => 'Registro de Alimentos.',
+        'type' => MENU_LOCAL_TASK,
+        'page callback' => 'system_registro_alimentos',
+        'access arguments' => array('entrada materias'),
+    );
+    $items['admin/content/inventario/alimentos'] = array(
+        'title' => 'Listado de Alimentos Preparados',
+        'page callback' => 'alimentos_lista',
+        'access arguments' => array('entrada materias'),
+        'access callback' => 'user_access',
+        'type' => MENU_NORMAL_ITEM,
+    );
+    $items['admin/content/inventario/registro_alimentos/edit'] = array(
+        'title' => 'Editar Alimentos',
+        'description' => 'Edición de alimentos.',
+        'type' => MENU_LOCAL_TASK,
+        'page callback' => 'edit_registro_alimentos',
+        'access arguments' => array('entrada materias'),
+    );
+    return $items;
+}
+
+/* * **************************************************************************************** */
+
+function system_registro_alimentos() {
+    return drupal_get_form('registro_alimentos_form');
+}
+
+function registro_alimentos_form($form, &$form_state) {
+    $unidades = array();
+    $unidades['kilos'] = 'kilos';
+    $unidades['litros'] = 'litros';
+    $unidades['quintales'] = 'quintales';
+    $form = array();
+    $form['name'] = array(
+        '#type' => 'textfield',
+        '#size' => 30,
+        '#maxlength' => 100,
+        '#title' => "Nombre del alimento preparado:",
+        '#required' => TRUE,
+        '#description' => t('Ingrese el nombre del alimento preparado.'),
+    );
+    $form['cant_reorden'] = array(
+        '#type' => 'textfield',
+        '#size' => 30,
+        '#maxlength' => 100,
+        '#title' => "Cantidad de reorden para el alimento preparado:",
+        '#required' => TRUE,
+        '#description' => t('Ingrese la cantidad de reorden para el alimento preparado.'),
+    );
+    $form['unit'] = array(
+        '#type' => 'select',
+        '#options' => $unidades,
+        '#title' => "Unidad del alimento:",
+        '#required' => TRUE,
+        '#description' => "Seleccione la unidad de medida del alimento.",
+    );
+    $form['costo'] = array(
+        '#type' => 'textfield',
+        '#size' => 30,
+        '#maxlength' => 100,
+        '#title' => "Costo del alimento preparado por unidad de venta:",
+        '#required' => TRUE,
+        '#description' => t('Ingrese el costo del alimento preparado por unidad.'),
+    );
+    $form['materia_prima'] = array(
+        '#type' => 'checkbox',
+        '#title' => t('Materia Prima'),
+        '#description' => t('Este check hace que el alimento preparado también sea una materia.'),
+    );
+    $form['submit'] = array(
+        '#type' => 'submit',
+        '#value' => "Guardar",
+    );
+    return $form;
+}
+
+function registro_alimentos_form_validate($form, &$form_state) {
+    
+}
+
+function registro_alimentos_form_submit($form, &$form_state) {
+    $name = $form_state['values']['name'];
+    $cant_reorden = $form_state['values']['cant_reorden'];
+    $unit = $form_state['values']['unit'];
+    $costo = $form_state['values']['costo'];
+    $materia_prima = $form_state['values']['materia_prima'];
+    $mydate = new DateTime(null);
+    $fecha = date("Y-m-d");
+    if (db_query("INSERT INTO alimentos_preparados (nombre, cantidad_reorden, unidad, monto, estado, materia_prima) 
+                values('$name', $cant_reorden, '$unit', $costo, 1, $materia_prima)")) {
+        $id = db_query("SELECT MAX(alimentos_preparados_id) FROM alimentos_preparados")->fetchField(); //mysql_insert_id
+        db_query("INSERT INTO alimentos_preparados_inventario(alimentos_preparados_id, fecha_ingreso,                 
+                cantidad_preparacion, cantidad_actual, cant_salida, monto, precio_prom, motivo, cliente, timestamp, monto_total) 
+                values($id, '$fecha', 0, 0, 0, 0, 0,
+                'Creación de alimentos', 0," . (time() - 21600) . ", 0)");
+        drupal_set_message("El alimento preparado $name fue guardado existosamente!");
+        drupal_goto('admin/content/inventario/alimentos');
+    } else {
+        drupal_set_message("Error al guardar el alimento preparado $name, por favor intente de nuevo!", 'error');
+        drupal_goto('admin/content/inventario/registro_alimentos');
+    }
+}
+
+/* * **************************************************************************************** */
+
+function alimentos_lista() {
+    // Build the header for the report table.
+    $header = array(t('Edit'), t('Mezcla'), t('Alimento'), t('Cantidad para reorden'), t('Unidad de medida'),
+        t('Precio por unidad'), t('Cantidad actual'), 'Estado', 'Materia Prima', 'Editar mezcla');
+    // Build the header to the CSV export.
+    $csv_rows = array(array(t('Alimento'), t('Mezcla'), t('Cantidad para reorden'), t('Unidad de medida'),
+            t('Precio por unidad'), t('Cantidad actual'), 'Estado', 'Materia Prima', 'Editar mezcla'));
+    $array_rows = array();
+    $rows = array();
+    $pre = $pos = "";
+
+    $results = db_query("SELECT * FROM alimentos_preparados where estado=1 order by nombre");
+    foreach ($results as $result) {
+        if ($result) {
+            $id_alimento = $result->alimentos_preparados_id;
+            /* $cant_actual = db_query("SELECT cantidad_actual FROM alimentos_preparados_inventario 
+              where alimentos_preparados_id=$id_alimento order by alimentos_preparados_inventario_id desc")->fetchField(); */
+            $cant_actual = db_query("SELECT SUM(cantidad_preparacion) FROM alimentos_preparados_inventario 
+                where alimentos_preparados_id=$id_alimento")->fetchField();
+            //$motivo = db_query("SELECT motivo FROM alimentos_preparados_inventario 
+            //    where alimentos_preparados_id=$id_alimento order by alimentos_preparados_inventario_id desc")->fetchField();
+            if (!$cant_actual)
+                $cant_actual = 0;
+            if ($cant_actual < $result->cantidad_reorden) {
+                $pre = '<span style="color: red">';
+                $pos = '</span>';
+            }
+            $precio_prom = db_query("SELECT precio_prom FROM alimentos_preparados_inventario 
+                where alimentos_preparados_id=$id_alimento and 
+                motivo like ('%Elaboración de alimento preparado%') order by alimentos_preparados_inventario_id desc limit 1")->fetchField();
+
+            $rows[] = array(
+                l(('Editar'), 'admin/content/inventario/registro_alimentos/edit/' . $result->alimentos_preparados_id),
+                l(('Materias primas'), 'admin/content/inventario/mezcla_alimentos/' . $result->alimentos_preparados_id),
+                $result->nombre . '<br/><i>' . l('(ver reporte completo »)', 'admin/content/inventario/reporte/alimento/' . $result->alimentos_preparados_id) . '</i>',
+                $pre . $result->cantidad_reorden . $pos,
+                $result->unidad,
+                //$precio_prom,
+                $result->monto,
+                $cant_actual,
+                //$motivo,
+                ($result->estado) ? 'Activo' : 'Inactivo',
+                ($result->materia_prima) ? 'SI' : 'NO',
+                l(('Editar mezcla »'), 'admin/content/inventario/ingreso_mezcla_alimentos/edit/' . $id_alimento)
+            );
+            $csv_rows[] = array(
+                $result->nombre,
+                $result->cantidad_reorden,
+                $result->unidad,
+                //$precio_prom,
+                $result->monto,
+                $cant_actual,
+                ($result->estado) ? 'Activo' : 'Inactivo',
+                ($result->materia_prima) ? 'SI' : 'NO',
+                    //$motivo,
+            );
+        }
+        $pre = $pos = "";
+    }
+    //print_r($rows);
+    // Cache the CSV export.
+    //$csv_data = uc_reports_store_csv('materias primas', $csv_rows);
+    // Build the page output holding the form, table, and CSV export link.
+    $output = theme('table', array(
+                'header' => $header,
+                'rows' => $rows,
+                'attributes' => array('class' => array('mytable')),
+                'sort' => 'asc'
+            ))
+            //. '<div class="uc-reports-links">' . l(t('Export to CSV file.'), 'admin/store/reports/getcsv/' . $csv_data['report'] . '/' . $csv_data['user']) . '</div>'
+            //. '<div class="uc-reports-links">' . l(t('Export to CSV file.'), 'admin/store/reports/getcsv/' . $csv_data['report'] . '/' . $csv_data['user']) . '</div>'
+            . '<br /><div class="uc-reports-links">' . l('Ingresar un nuevo alimento »', 'admin/content/inventario/registro_alimentos') . '</div>'
+            . '<br /><div class="uc-reports-links">' . l('Ingresar inventario de alimento »', 'admin/content/inventario/ingreso_alimentos') . '</div>'
+            . '<br /><div class="uc-reports-links">' . l('Salida de inventario de alimento »', 'admin/content/inventario/salida_alimentos') . '</div>';
+    /* $output = theme('table', $header, $rows, array('width' => '100%', 'class' => 'uc-sales-table', 'style' => 'text-align: center'))
+      . '<div class="uc-reports-links">' . l(t('Export to CSV file.'), 'admin/store/reports/getcsv/' . $csv_data['report'] . '/' . $csv_data['user']) . '</div>'
+      . '<br /><div class="uc-reports-links">' . l('Ingresar una nueva materia prima', 'admin/content/inventarios/registro_materias') . '</div>';
+      drupal_set_message(print_r($rows)); */
+    return $output;
+    //return drupal_get_form('materias_lista_form');
+}
+
+/* * ************************************************************************************* */
+
+function edit_registro_alimentos() {
+    return drupal_get_form('edit_registro_alimentos_form');
+}
+
+function edit_registro_alimentos_form($form, &$form_state) {
+    if (arg(4) == "edit" && arg(5) > 0) {
+        $id_alimento = arg(5);
+
+        $nombre = db_query("SELECT nombre FROM alimentos_preparados where alimentos_preparados_id=$id_alimento")->fetchField();
+        $unidad = db_query("SELECT unidad FROM alimentos_preparados where alimentos_preparados_id=$id_alimento")->fetchField();
+        $costo = db_query("SELECT monto FROM alimentos_preparados where alimentos_preparados_id=$id_alimento")->fetchField();
+        $reorden = db_query("SELECT cantidad_reorden FROM alimentos_preparados where alimentos_preparados_id=$id_alimento")->fetchField();
+        $estado = db_query("SELECT estado FROM alimentos_preparados where alimentos_preparados_id=$id_alimento")->fetchField();
+        $materia_prima = db_query("SELECT materia_prima FROM alimentos_preparados where alimentos_preparados_id=$id_alimento")->fetchField();
+
+        $unidades = array();
+        $unidades['kilos'] = 'kilos';
+        $unidades['libras'] = 'libras';
+        $unidades['quintales'] = 'quintales';
+        $form = array();
+        $form['name'] = array(
+            '#type' => 'textfield',
+            '#size' => 30,
+            '#maxlength' => 100,
+            '#title' => "Nombre del alimento preparado:",
+            '#required' => TRUE,
+            '#default_value' => $nombre,
+            '#description' => t('Ingrese el nombre del alimento preparado.'),
+        );
+        $form['cant_reorden'] = array(
+            '#type' => 'textfield',
+            '#size' => 30,
+            '#maxlength' => 100,
+            '#title' => "Cantidad de reorden para el alimento preparado:",
+            '#required' => TRUE,
+            '#default_value' => $reorden,
+            '#description' => t('Ingrese la cantidad de reorden para el alimento preparado.'),
+        );
+        $form['unit'] = array(
+            '#type' => 'select',
+            '#options' => $unidades,
+            '#title' => "Unidad del alimento:",
+            '#required' => TRUE,
+            '#default_value' => $unidad,
+            '#description' => "Seleccione la unidad de medida del alimento.",
+                //'#attributes' => array('class' => 'percentage', 'id' => 'txb_percentage'),
+        );
+        $form['costo'] = array(
+            '#type' => 'textfield',
+            '#size' => 30,
+            '#maxlength' => 100,
+            '#title' => "Costo del alimento preparado por unidad de venta:",
+            '#required' => TRUE,
+            '#default_value' => $costo,
+            '#description' => t('Ingrese el costo del alimento preparado por unidad.'),
+        );
+        $form['estado'] = array(
+            '#type' => 'checkbox',
+            '#title' => t('Activo'),
+            '#default_value' => $estado,
+            '#description' => t('El check pone activo o desactivo el alimento.'),
+        );
+        $form['materia_prima'] = array(
+            '#type' => 'checkbox',
+            '#default_value' => $materia_prima,
+            '#title' => t('Materia Prima'),
+            '#description' => t('Este check hace que el alimento preparado también sea una materia.'),
+        );
+        $form['submit'] = array(
+            '#type' => 'submit',
+            '#value' => "Guardar",
+        );
+        return $form;
+    } else {
+        drupal_goto('admin/content/inventario/alimentos');
+    }
+}
+
+function edit_registro_alimentos_form_validate($form, &$form_state) {
+    
+}
+
+function edit_registro_alimentos_form_submit($form, &$form_state) {
+    if (arg(4) == "edit" && arg(5) > 0) {
+        $id_alimento = arg(5);
+        $name = $form_state['values']['name'];
+        $reorder = $form_state['values']['cant_reorden'];
+        $unit = $form_state['values']['unit'];
+        $precio = $form_state['values']['costo'];
+        $materia_prima = $form_state['values']['materia_prima'];
+        $estado = 0;
+        ($form_state['values']['estado']) ? $estado = 1 : '';
+
+        if (db_query("UPDATE alimentos_preparados set nombre='$name', cantidad_reorden=$reorder, unidad='$unit', monto=$precio, 
+                estado=$estado, materia_prima=$materia_prima
+                        where alimentos_preparados_id=$id_alimento")) {
+            drupal_set_message("Se actualizo $name existosamente!");
+        } else {
+            drupal_set_message("Error al actualizar el alimento $name, por favor intente de nuevo!", 'error');
+        }
+        drupal_goto('admin/content/inventario/alimentos');
+    } else {
+        drupal_goto('admin/content/inventario/alimentos');
+    }
+}
+
+/* * **************************************************************************************** */
+
+
+
+
+    

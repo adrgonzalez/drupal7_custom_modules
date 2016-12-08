@@ -1,0 +1,573 @@
+<?php
+
+/**
+ * @file
+ * Render an administrative menu as a dropdown menu at the top of the window.
+ */
+
+/**
+ * Implements hook_permission().
+ */
+function ingreso_alimentos_permission() {
+    return array(
+        'entrada materias' => array(
+            'title' => t('Control de salida de materias'),
+            'description' => t('Control de salida de materias.'),
+        ),
+    );
+}
+
+/* * **************************************************************************************** */
+
+/**
+ * Implements hook_menu().
+ */
+function ingreso_alimentos_menu() {
+    $items = array();
+// Module settings.
+    $items['admin/content/inventario/ingreso_alimentos'] = array(
+        'title' => 'Ingreso de inventario de alimentos',
+        'description' => 'Ingreso de inventario de Alimentos.',
+        'type' => MENU_LOCAL_TASK,
+        'page callback' => 'system_ingreso_alimentos',
+        'access arguments' => array('entrada materias'),
+    );
+    $items['admin/content/inventario/salida_alimentos'] = array(
+        'title' => 'Salida de inventario de alimentos',
+        'description' => 'Salida de inventario de Alimentos.',
+        'type' => MENU_LOCAL_TASK,
+        'page callback' => 'system_salida_alimentos',
+        'access arguments' => array('entrada materias'),
+    );
+    return $items;
+}
+
+/* * **************************************************************************************** */
+
+function system_ingreso_alimentos() {
+    return drupal_get_form('ingreso_alimentos_form');
+}
+
+function ingreso_alimentos_form($form, &$form_state) {
+    $alimentos_preparados = db_query("SELECT * FROM alimentos_preparados where estado=1 order by nombre");
+    $options = array();
+    foreach ($alimentos_preparados as $alimento_preparado) {
+        if ($alimento_preparado) {
+            $options[$alimento_preparado->alimentos_preparados_id] = $alimento_preparado->nombre;
+        }
+    }
+    $form = array();
+    $form['alimento'] = array(
+        '#type' => 'select',
+        '#options' => $options,
+        '#title' => "Nombre del alimento:",
+        '#required' => TRUE,
+        '#description' => t('Seleccione el nombre del alimento.'),
+    );
+    $form['cant'] = array(
+        '#type' => 'textfield',
+        '#size' => 30,
+        '#maxlength' => 100,
+        '#title' => "Cantidad del alimento preparado:",
+        '#required' => TRUE,
+        '#description' => "Ingrese la cantidad de alimento que se preparó.",
+            //'#attributes' => array('class' => 'percentage', 'id' => 'txb_percentage'),
+    );
+    $form['date'] = array(
+        '#type' => 'date',
+        '#title' => "Fecha de la preparación:",
+        '#required' => TRUE,
+        '#description' => "Ingrese la fecha en la que se preparó el alimento.",
+            //'#attributes' => array('class' => 'percentage', 'id' => 'txb_percentage'),
+    );
+    $form['submit'] = array(
+        '#type' => 'submit',
+        '#value' => "Guardar",
+    );
+    return $form;
+}
+
+function ingreso_alimentos_form_validate($form, &$form_state) {
+    $mydate = new DateTime(null);
+    $id_alimento = $form_state['values']['alimento'];
+    $cant_preparacion = $form_state['values']['cant'];
+    $date = $form_state['values']['date'];
+    $fecha = $date['year'] . '-' . $date['month'] . '-' . $date['day'];
+    //$name = db_query("SELECT nombre FROM alimentos_preparados where materias_primas_id=$id_alimento")->fetchField();
+    /* if (db_query("SELECT cantidad_actual FROM alimentos_preparados_inventario
+      where alimentos_preparados_id=$id_alimento")->fetchField() > 0) { */
+    $cant_anterior = db_query("SELECT cantidad_actual FROM alimentos_preparados_inventario
+                where alimentos_preparados_id=$id_alimento order by alimentos_preparados_inventario_id desc limit 1")->fetchField();
+
+    $cantidad_actual = $cant_anterior + $cant_preparacion;
+
+    /* if (db_query("INSERT INTO alimentos_preparados_inventario(alimentos_preparados_id, fecha_ingreso,                 
+      cantidad_preparacion, cantidad_actual, motivo) values($id_alimento, '$fecha', $cant_preparacion, $cantidad_actual,
+      'Ingreso de inventario')")) { */
+    //sacar las materias primas y hacer la resta en las cantidades de c/u
+    $materias = db_query("SELECT * FROM materias_primas_alimentos");
+    foreach ($materias as $materia) {
+        if ($materia) {
+            $id_materia = $materia->materias_primas_id;
+            $id_alimento_materia = $materia->alimento_materias_primas_id;
+
+            if ($id_materia != 0 and $id_alimento_materia == 0) {
+                //$id_materia = $materia->materias_primas_id;
+                $materia_nombre = db_query("SELECT nombre FROM materias_primas WHERE materias_primas_id=$id_materia")->fetchField();
+                $cant_actual = db_query("SELECT cantidad_actual FROM materias_primas_inventario
+                                WHERE materias_primas_id = $id_materia ORDER BY timestamp DESC LIMIT 1 ")->fetchField();
+                $cant_materia_preparar = db_query("SELECT cantidad_materia_prima FROM materias_primas_alimentos
+                                WHERE materias_primas_id=$id_materia and alimentos_preparados_id=$id_alimento")->fetchField();
+                $cant_materia_preparar2 = $cant_materia_preparar * $cant_preparacion;
+                $cant_actual2 = $cant_actual - $cant_materia_preparar2;
+                if ($cant_actual2 < 0) {
+                    form_set_error('Faltante de materia prima', "No hay suficiente materia prima $materia_nombre");
+                } /* else {
+                  drupal_set_message("cant_actual2: $cant_actual2 - $cant_actual,
+                  $cant_materia_preparar2: $cant_materia_preparar2 - $cant_materia_preparar
+                  cant_preparacion: $cant_preparacion");
+                  } */
+            } elseif ($id_materia == 0 and $id_alimento_materia != 0) {
+                //$id_materia = $materia->materias_primas_id;
+                $materia_nombre = db_query("SELECT nombre FROM alimentos_preparados 
+                                            WHERE alimentos_preparados_id=$id_alimento_materia")->fetchField();
+                $cant_actual = db_query("SELECT cantidad_actual FROM alimentos_preparados_inventario
+                                WHERE alimentos_preparados_id = $id_alimento_materia ORDER BY timestamp DESC LIMIT 1 ")->fetchField();
+                $cant_materia_preparar = db_query("SELECT cantidad_materia_prima FROM materias_primas_alimentos
+                                WHERE alimento_materias_primas_id=$id_alimento_materia and alimentos_preparados_id=$id_alimento")->fetchField();
+                $cant_materia_preparar2 = $cant_materia_preparar * $cant_preparacion;
+                $cant_actual2 = $cant_actual - $cant_materia_preparar2;
+                if ($cant_actual2 < 0) {
+                    form_set_error('Faltante de materia prima (alimento preparado)', "No hay suficiente materia prima (alimento preparado) $materia_nombre");
+                }
+            }
+        }
+    }
+}
+
+function ingreso_alimentos_form_submit($form, &$form_state) {
+    $mensaje = "";
+    $mydate = new DateTime(null);
+    $id_alimento = $form_state['values']['alimento'];
+    $cliente = 0;
+    $cant_preparacion = $form_state['values']['cant']; // cant de kilos que siempre se preparan
+    $cant_preparacion_quintales = $form_state['values']['cant'] * 20; // cant de quintales que siempre se preparan
+    $date = $form_state['values']['date'];
+    $fecha = $date['year'] . '-' . $date['month'] . '-' . $date['day'];
+    $cant_alimento_preparado = 0;
+    $precio_prom_alimento = 0;
+    //$name = db_query("SELECT nombre FROM alimentos_preparados where materias_primas_id=$id_alimento")->fetchField();
+    //drupal_set_message("aqui0: $id_alimento, $cant_preparacion, $date, $fecha");
+    $cant_anterior = db_query("SELECT cantidad_actual FROM alimentos_preparados_inventario
+                where alimentos_preparados_id=$id_alimento order by alimentos_preparados_inventario_id desc limit 1")->fetchField();
+    if ($cant_anterior > 0) {
+        //sacar las materias primas y hacer la resta en las cantidades de c/u
+        //drupal_set_message("aqui2: $id_alimento, $cant_preparacion, $date, $fecha");
+        $materias = db_query("SELECT * FROM materias_primas_alimentos where alimentos_preparados_id=$id_alimento");
+        foreach ($materias as $materia) {
+            if ($materia) {
+                //drupal_set_message("materia: $materia->materias_primas_id");
+                $id_materia = $materia->materias_primas_id;
+                $id_alimento_materia = $materia->alimento_materias_primas_id;
+
+                if ($id_materia != 0 and $id_alimento_materia == 0) {
+                    //drupal_set_message("materia");
+                    $materia_nombre = db_query("SELECT nombre FROM materias_primas WHERE materias_primas_id=$id_materia")->fetchField();
+                    $reorden = db_query("SELECT reorden FROM materias_primas WHERE materias_primas_id=$id_materia")->fetchField();
+                    $precio_prom = db_query("SELECT precio_prom FROM materias_primas_inventario WHERE materias_primas_id=$id_materia
+                                        order by id_reporte_materias_primas DESC LIMIT 1 ")->fetchField();
+                    $cant_actual = db_query("SELECT cantidad_actual FROM materias_primas_inventario
+                                WHERE materias_primas_id = $id_materia ORDER BY timestamp DESC LIMIT 1 ")->fetchField();
+                    //drupal_set_message("cant_actual antes: $cant_actual");
+                    $cant_materia_preparar = db_query("SELECT cantidad_materia_prima FROM materias_primas_alimentos
+                                WHERE materias_primas_id=$id_materia and alimentos_preparados_id=$id_alimento")->fetchField();
+                    $cant_materia_preparar = $cant_materia_preparar * $cant_preparacion;
+
+                    $precio_prom_alimento += $precio_prom * $cant_materia_preparar;
+
+                    $cant_actual = $cant_actual - $cant_materia_preparar;
+                    $cant_alimento_preparado += $cant_materia_preparar;
+
+                    //drupal_set_message("cant_actual despues: $cant_actual, cant_materia_preparar: $cant_materia_preparar
+                    //            , cant_preparacion: $cant_preparacion, materia: $materia, cant_materia_preparar: $cant_materia_preparar");
+                    //$fecha =  date("Y-m-d");
+                    $precio_prom = round($precio_prom, 3);
+                    if (db_query("INSERT INTO materias_primas_inventario 
+                                 (materias_primas_id, fecha_ingreso, cantidad_compra, monto, precio_prom, cantidad_actual, 
+                                 motivo, timestamp, cliente, monto_total) 
+                                 values($id_materia, '$fecha', -$cant_materia_preparar, 0, $precio_prom, $cant_actual, 
+                                 'Salida para preparacion de Alimento', " . (time() - 21600) . ", 0, 0)")) {
+                        if ($cant_actual < $reorden) {
+                            mail("adrgonzalez@gmail.com", "Orden de materia prima", "<br/><b>$materia_nombre</b> esta por debajo del punto de reorden
+                                    que se definió, por favor realice el encargo correspondiente!<br/><br/>Gracias");
+                        }
+                    }
+                    $mensaje .= ' - ' . $materia_nombre;
+                } elseif ($id_materia == 0 and $id_alimento_materia != 0) {
+                    //drupal_set_message("alimento");
+                    $materia_nombre = db_query("SELECT nombre FROM alimentos_preparados 
+                                                WHERE alimentos_preparados_id=$id_alimento_materia")->fetchField();
+                    $monto_unitario = db_query("SELECT monto FROM alimentos_preparados 
+                                                WHERE alimentos_preparados_id=$id_alimento_materia")->fetchField();
+                    $reorden = db_query("SELECT cantidad_reorden FROM alimentos_preparados 
+                                        WHERE alimentos_preparados_id=$id_alimento_materia")->fetchField();
+                    $precio_prom = db_query("SELECT precio_prom FROM alimentos_preparados_inventario 
+                                            WHERE alimentos_preparados_id=$id_alimento_materia
+                                            order by alimentos_preparados_inventario_id DESC LIMIT 1 ")->fetchField();
+                    $cant_actual = db_query("SELECT cantidad_actual FROM alimentos_preparados_inventario
+                                WHERE alimentos_preparados_id = $id_alimento_materia ORDER BY timestamp DESC LIMIT 1 ")->fetchField();
+                    //drupal_set_message("cant_actual antes: $cant_actual");
+                    //$cant_actual_original = $cant_actual;
+                    $cant_materia_preparar = db_query("SELECT cantidad_materia_prima FROM materias_primas_alimentos
+                                WHERE alimento_materias_primas_id=$id_alimento_materia and alimentos_preparados_id=$id_alimento")->fetchField();
+                    $cant_materia_preparar = $cant_materia_preparar * $cant_preparacion;
+                    
+                    $monto_total = $monto_unitario * $cant_preparacion;
+
+                    $precio_prom_alimento += $precio_prom * $cant_materia_preparar;
+
+                    $cant_actual = $cant_actual - $cant_materia_preparar;
+                    $cant_alimento_preparado += $cant_materia_preparar;
+
+                    //drupal_set_message("cant_actual despues: $cant_actual, cant_materia_preparar: $cant_materia_preparar
+                    //            , cant_preparacion: $cant_preparacion, materia: $materia, cant_materia_preparar: $cant_materia_preparar");
+                    //$fecha =  date("Y-m-d");
+                    $precio_prom = round($precio_prom, 3);
+                    if (db_query("INSERT INTO alimentos_preparados_inventario 
+                                 (alimentos_preparados_id, fecha_ingreso, 
+                                    cantidad_preparacion, cantidad_actual, cant_salida, 
+                                    monto, precio_prom, motivo, cliente, timestamp, 
+                                    monto_total) 
+                                 values($id_alimento_materia, '$fecha', 
+                                    -$cant_materia_preparar, $cant_actual, $cant_materia_preparar, 
+                                    $monto_unitario, $precio_prom, 'Salida para preparacion de Alimento', $cliente, " . (time() - 21600) . ", 
+                                        $monto_total)")) {
+                        if ($cant_actual < $reorden) {
+                            mail("adrgonzalez@gmail.com", "Orden de materia prima", "<br/><b>$materia_nombre</b> esta por debajo del punto de reorden
+                                    que se definió, por favor realice el encargo correspondiente!<br/><br/>Gracias");
+                        }
+                    }
+                    $mensaje .= ' - ' . $materia_nombre;
+                }
+            }
+        }
+        $cantidad_actual = $cant_anterior + $cant_preparacion_quintales;
+        $precio_prom_alimento = round($precio_prom_alimento, 3);
+        //drupal_set_message("aqui1: $id_alimento, $cant_preparacion, $date, $fecha");
+        if (db_query("INSERT INTO alimentos_preparados_inventario(alimentos_preparados_id, fecha_ingreso,                 
+                cantidad_preparacion, cantidad_actual, cant_salida, monto, precio_prom, motivo, cliente, timestamp, monto_total) 
+                values($id_alimento, '$fecha', 
+                $cant_preparacion_quintales, $cantidad_actual, 0, 0, $precio_prom_alimento, 'Elaboración de alimento preparado', 0,"
+                        . (time() - 21600) . ", 0)")) {
+            drupal_set_message("Se preparo correctamente el alimento con:$mensaje!");
+            /* drupal_set_message("cant_actual despues: $cant_actual, cant_materia_preparar: $cant_materia_preparar
+              , cant_preparacion: $cant_preparacion, materia: $materia, cant_materia_preparar: $cant_materia_preparar"); */
+        } else {
+            drupal_set_message("Error al guardar el alimento, por favor intente de nuevo!", 'error');
+        }
+        drupal_goto('admin/content/inventario/alimentos');
+    } else {
+        //sacar las materias primas y hacer la resta en las cantidades de c/u
+        //drupal_set_message("aqui2: $id_alimento, $cant_preparacion, $date, $fecha");
+        $materias = db_query("SELECT * FROM materias_primas_alimentos where alimentos_preparados_id=$id_alimento");
+        foreach ($materias as $materia) {
+            if ($materia) {
+                //drupal_set_message("materia: $materia->materias_primas_id");
+                $id_materia = $materia->materias_primas_id;
+                $id_alimento_materia = $materia->alimento_materias_primas_id;
+
+                if ($id_materia != 0 and $id_alimento_materia == 0) {
+                    //drupal_set_message("materia");
+                    $materia_nombre = db_query("SELECT nombre FROM materias_primas WHERE materias_primas_id=$id_materia")->fetchField();
+                    $reorden = db_query("SELECT reorden FROM materias_primas WHERE materias_primas_id=$id_materia")->fetchField();
+                    $precio_prom = db_query("SELECT precio_prom FROM materias_primas_inventario WHERE materias_primas_id=$id_materia
+                                        order by id_reporte_materias_primas DESC LIMIT 1 ")->fetchField();
+                    $cant_actual = db_query("SELECT cantidad_actual FROM materias_primas_inventario
+                                WHERE materias_primas_id = $id_materia ORDER BY timestamp DESC LIMIT 1 ")->fetchField();
+                    //drupal_set_message("cant_actual antes: $cant_actual");
+                    $cant_materia_preparar = db_query("SELECT cantidad_materia_prima FROM materias_primas_alimentos
+                                WHERE materias_primas_id=$id_materia and alimentos_preparados_id=$id_alimento")->fetchField();
+                    $cant_materia_preparar = $cant_materia_preparar * $cant_preparacion;
+
+                    $precio_prom_alimento += $precio_prom * $cant_materia_preparar;
+
+                    $cant_actual = $cant_actual - $cant_materia_preparar;
+                    $cant_alimento_preparado += $cant_materia_preparar;
+
+                    //drupal_set_message("cant_actual despues: $cant_actual, cant_materia_preparar: $cant_materia_preparar
+                    //            , cant_preparacion: $cant_preparacion, materia: $materia, cant_materia_preparar: $cant_materia_preparar");
+                    //$fecha =  date("Y-m-d");
+                    $precio_prom = round($precio_prom, 3);
+                    if (db_query("INSERT INTO materias_primas_inventario 
+                                 (materias_primas_id, fecha_ingreso, cantidad_compra, monto, precio_prom, cantidad_actual, 
+                                 motivo, timestamp, cliente, monto_total) 
+                                 values($id_materia, '$fecha', -$cant_materia_preparar, 0, $precio_prom, $cant_actual, 
+                                 'Salida para preparacion de Alimento', " . (time() - 21600) . ", 0, 0)")) {
+                        if ($cant_actual < $reorden) {
+                            mail("adrgonzalez@gmail.com", "Orden de materia prima", "<br/><b>$materia_nombre</b> esta por debajo del punto de reorden
+                                    que se definió, por favor realice el encargo correspondiente!<br/><br/>Gracias");
+                        }
+                    }
+                    $mensaje .= ' - ' . $materia_nombre;
+                } elseif ($id_materia == 0 and $id_alimento_materia != 0) {
+                    //drupal_set_message("alimento");
+                    $materia_nombre = db_query("SELECT nombre FROM alimentos_preparados 
+                                                WHERE alimentos_preparados_id=$id_alimento_materia")->fetchField();
+                    $monto_unitario = db_query("SELECT monto FROM alimentos_preparados 
+                                                WHERE alimentos_preparados_id=$id_alimento_materia")->fetchField();
+                    $reorden = db_query("SELECT cantidad_reorden FROM alimentos_preparados 
+                                        WHERE alimentos_preparados_id=$id_alimento_materia")->fetchField();
+                    $precio_prom = db_query("SELECT precio_prom FROM alimentos_preparados_inventario 
+                                            WHERE alimentos_preparados_id=$id_alimento_materia
+                                            order by alimentos_preparados_inventario_id DESC LIMIT 1 ")->fetchField();
+                    $cant_actual = db_query("SELECT cantidad_actual FROM alimentos_preparados_inventario
+                                WHERE alimentos_preparados_id = $id_alimento_materia ORDER BY timestamp DESC LIMIT 1 ")->fetchField();
+                    //drupal_set_message("cant_actual antes: $cant_actual");
+                    //$cant_actual_original = $cant_actual;
+                    $cant_materia_preparar = db_query("SELECT cantidad_materia_prima FROM materias_primas_alimentos
+                                WHERE alimento_materias_primas_id=$id_alimento_materia and alimentos_preparados_id=$id_alimento")->fetchField();
+                    $cant_materia_preparar = $cant_materia_preparar * $cant_preparacion;
+                    
+                    $monto_total = $monto_unitario * $cant_preparacion;
+
+                    $precio_prom_alimento += $precio_prom * $cant_materia_preparar;
+
+                    $cant_actual = $cant_actual - $cant_materia_preparar;
+                    $cant_alimento_preparado += $cant_materia_preparar;
+
+                    //drupal_set_message("cant_actual despues: $cant_actual, cant_materia_preparar: $cant_materia_preparar
+                    //            , cant_preparacion: $cant_preparacion, materia: $materia, cant_materia_preparar: $cant_materia_preparar");
+                    //$fecha =  date("Y-m-d");
+                    $precio_prom = round($precio_prom, 3);
+                    if (db_query("INSERT INTO alimentos_preparados_inventario 
+                                 (alimentos_preparados_id, fecha_ingreso, 
+                                    cantidad_preparacion, cantidad_actual, cant_salida, 
+                                    monto, precio_prom, motivo, cliente, timestamp, 
+                                    monto_total) 
+                                 values($id_alimento_materia, '$fecha', 
+                                    -$cant_materia_preparar, $cant_actual, $cant_materia_preparar, 
+                                    $monto_unitario, $precio_prom, 'Salida para preparacion de Alimento', $cliente, " . (time() - 21600) . ", 
+                                        $monto_total)")) {
+                        if ($cant_actual < $reorden) {
+                            mail("adrgonzalez@gmail.com", "Orden de materia prima", "<br/><b>$materia_nombre</b> esta por debajo del punto de reorden
+                                    que se definió, por favor realice el encargo correspondiente!<br/><br/>Gracias");
+                        }
+                    }
+                    $mensaje .= ' - ' . $materia_nombre;
+                }
+                /*
+                $materia_nombre = db_query("SELECT nombre FROM materias_primas WHERE materias_primas_id=$id_materia")->fetchField();
+                $reorden = db_query("SELECT reorden FROM materias_primas WHERE materias_primas_id=$id_materia")->fetchField();
+                $precio_prom = db_query("SELECT precio_prom FROM materias_primas_inventario WHERE materias_primas_id=$id_materia
+                                        order by id_reporte_materias_primas DESC LIMIT 1 ")->fetchField();
+                $cant_actual = db_query("SELECT cantidad_actual FROM materias_primas_inventario
+                                WHERE materias_primas_id = $id_materia ORDER BY timestamp DESC LIMIT 1 ")->fetchField();
+                //drupal_set_message("cant_actual antes: $cant_actual");
+                $cant_materia_preparar = db_query("SELECT cantidad_materia_prima FROM materias_primas_alimentos
+                                WHERE materias_primas_id=$id_materia and alimentos_preparados_id=$id_alimento")->fetchField();
+                $cant_materia_preparar = $cant_materia_preparar * $cant_preparacion;
+
+                $precio_prom_alimento += $precio_prom * $cant_materia_preparar;
+
+                $cant_actual = $cant_actual - $cant_materia_preparar;
+                //drupal_set_message("cant_actual despues: $cant_actual, cant_materia_preparar: $cant_materia_preparar
+                //            , cant_preparacion: $cant_preparacion, materia: $materia, cant_materia_preparar: $cant_materia_preparar");
+                //$fecha =  date("Y-m-d");
+                $precio_prom_alimento = round($precio_prom_alimento, 3);
+                $precio_prom = round($precio_prom, 3);
+                if (db_query("INSERT INTO materias_primas_inventario 
+                                 (materias_primas_id, fecha_ingreso, cantidad_compra, monto, precio_prom, cantidad_actual, 
+                                 motivo, timestamp, cliente, monto_total) 
+                                 values($id_materia, '$fecha', -$cant_materia_preparar, 0, $precio_prom, $cant_actual, 
+                                 'Salida para preparacion de Alimento', " . (time() - 21600) . ", 0, 0)")) {
+                    if ($cant_actual < $reorden) {
+                        mail("adrgonzalez@gmail.com", "Orden de materia prima", "<br/><b>$materia_nombre</b> esta por debajo del punto de reorden
+                                    que se definió, por favor realice el encargo correspondiente!<br/><br/>Gracias");
+                    }
+                }
+                $mensaje .= ' - ' . $materia_nombre;
+                */
+            }
+        }
+        $cantidad_actual = $cant_preparacion_quintales;
+        //drupal_set_message("aqui1: $id_alimento, $cant_preparacion, $date, $fecha");
+        $precio_prom_alimento = round($precio_prom_alimento, 3);
+        if (db_query("INSERT INTO alimentos_preparados_inventario(alimentos_preparados_id, fecha_ingreso,                 
+                cantidad_preparacion, cantidad_actual, cant_salida, monto, precio_prom, motivo, cliente, timestamp, monto_total) 
+                values($id_alimento, '$fecha', 
+                $cant_preparacion_quintales, $cantidad_actual, 0, 0, $precio_prom_alimento, 'Elaboración de alimento preparado', 0, " .
+                        (time() - 21600) . ", 0)")) {
+
+            drupal_set_message("Se preparo correctamente el alimento con:$mensaje!");
+            /* drupal_set_message("cant_actual despues: $cant_actual, cant_materia_preparar: $cant_materia_preparar
+              , cant_preparacion: $cant_preparacion, materia: $materia, cant_materia_preparar: $cant_materia_preparar"); */
+        }
+        drupal_goto('admin/content/inventario/alimentos');
+    }
+}
+
+/* * **************************************************************************************** */
+
+function system_salida_alimentos() {
+    return drupal_get_form('salida_alimentos_form');
+}
+
+function salida_alimentos_form($form, &$form_state) {
+    $alimentos_preparados = db_query("SELECT * FROM alimentos_preparados where estado=1 order by nombre");
+    $options = array();
+    //$costo = array();
+    foreach ($alimentos_preparados as $alimento_preparado) {
+        if ($alimento_preparado) {
+            $id_alimento = $alimento_preparado->alimentos_preparados_id;
+            $options[$id_alimento] = $alimento_preparado->nombre;
+            /* $costo[$id_alimento] = db_query("SELECT precio_prom FROM alimentos_preparados_inventario where 
+              alimentos_preparados_inventario_id=$id_alimento")->fetchField(); */
+        }
+    }
+    $clientes = db_query("SELECT * FROM inventarios_clientes order by nombre");
+    $options_cliente = array();
+    foreach ($clientes as $cliente) {
+        if ($cliente) {
+            //drupal_set_message("estado: $cliente->estado, $cliente->nombre, $cliente->id_inventarios_clientes");
+            if ($cliente->estado) {
+                $option_cliente[$cliente->id_inventarios_clientes] = $cliente->nombre;
+            }
+        }
+    }
+    $clientes_proveedor = db_query("SELECT * FROM inventarios_proveedores where cliente=1 order by nombre");
+    foreach ($clientes_proveedor as $cliente_proveedor) {
+        if ($cliente_proveedor) {
+            if ($cliente_proveedor->estado) {
+                $option_cliente[$cliente_proveedor->id_inventarios_proveedores] = $cliente_proveedor->nombre;
+            }
+        }
+    }
+
+    $form = array();
+    $form['alimento'] = array(
+        '#type' => 'select',
+        '#options' => $options,
+        '#title' => "Nombre del alimento:",
+        '#required' => TRUE,
+        '#description' => t('Seleccione el nombre del alimento.'),
+    );
+    $form['cant'] = array(
+        '#type' => 'textfield',
+        '#size' => 30,
+        '#maxlength' => 100,
+        '#title' => "Cantidad del alimento que se va a vender:",
+        '#required' => TRUE,
+        '#description' => "Ingrese la cantidad de alimento que salió de la bodega.",
+            //'#attributes' => array('class' => 'percentage', 'id' => 'txb_percentage'),
+    );
+    $form['monto'] = array(
+        '#type' => 'textfield',
+        '#size' => 30,
+        '#maxlength' => 100,
+        '#title' => "Monto del alimento que se va a vender:",
+        '#required' => TRUE,
+        '#description' => "Ingrese el monto de alimento que salió de la bodega.",
+            //'#attributes' => array('class' => 'percentage', 'id' => 'txb_percentage'),
+    );
+    /* $form['monto_produc'] = array(
+      '#type' => 'textfield',
+      //'#disabled' => true,
+      '#size' => 30,
+      '#maxlength' => 100,
+      '#title' => "Costo de producción del alimento",
+      '#required' => true,
+      '#default_value' => $costo,
+      //'#description' => "Ingrese la cantidad de kilos de huevo.",
+      //'#attributes' => array('class' => 'percentage', 'id' => 'txb_percentage'),
+      ); */
+    $form['cliente'] = array(
+        '#type' => 'select',
+        '#options' => $option_cliente,
+        '#title' => "Seleccione el cliente:",
+        '#required' => TRUE,
+        '#description' => "El cliente al que se le vendió el alimento.",
+            //'#attributes' => array('class' => 'percentage', 'id' => 'txb_percentage'),
+    );
+    $form['date'] = array(
+        '#type' => 'date',
+        '#title' => "Fecha de la venta:",
+        '#required' => TRUE,
+        '#description' => "Ingrese la fecha en que salió de la bodega.",
+            //'#attributes' => array('class' => 'percentage', 'id' => 'txb_percentage'),
+    );
+    $form['submit'] = array(
+        '#type' => 'submit',
+        '#value' => "Guardar",
+    );
+    return $form;
+}
+
+function salida_alimentos_form_validate($form, &$form_state) {
+    $field_key = $form_state['values']['alimento'];
+    $nombre_alimento = $form['alimento']['#options'][$field_key];
+    $id_alimento = $form_state['values']['alimento'];
+    $cant_alimento = $form_state['values']['cant'];
+    $cant_alimento_actual = db_query("SELECT cantidad_actual FROM alimentos_preparados_inventario 
+                where alimentos_preparados_id=$id_alimento order by alimentos_preparados_inventario_id desc limit 1")->fetchField();
+    //drupal_set_message("$cant_alimento - $cant_alimento_actual | $cant_alimento_actual - $cant_alimento");
+    if (($cant_alimento_actual - $cant_alimento) < 0 || $cant_alimento_actual == 0) {
+        form_set_error('Faltante de producto terminado', "No hay suficiente producto: $nombre_alimento");
+    }
+}
+
+function salida_alimentos_form_submit($form, &$form_state) {
+    $mydate = new DateTime(null);
+    $id_alimento = $form_state['values']['alimento'];
+    $cant_salida = $form_state['values']['cant'];
+    $monto = $form_state['values']['monto'];
+    $cliente = $form_state['values']['cliente'];
+    $date = $form_state['values']['date'];
+    $fecha = $date['year'] . '-' . $date['month'] . '-' . $date['day'];
+    $field_key = $form_state['values']['alimento'];
+    $nombre_alimento = $form['alimento']['#options'][$field_key];
+    //$name = db_query("SELECT nombre FROM alimentos_preparados where materias_primas_id=$id_alimento")->fetchField();
+    /* if (db_query("SELECT cantidad_actual FROM alimentos_preparados_inventario
+      where alimentos_preparados_id=$id_alimento")->fetchField() > 0) {- */
+    $cant_anterior = db_query("SELECT cantidad_actual FROM alimentos_preparados_inventario 
+                where alimentos_preparados_id=$id_alimento order by alimentos_preparados_inventario_id desc limit 1")->fetchField();
+    $precio_prom = db_query("SELECT precio_prom FROM alimentos_preparados_inventario 
+                where alimentos_preparados_id=$id_alimento and 
+                motivo like ('%Elaboración de alimento preparado%') order by alimentos_preparados_inventario_id desc limit 1")->fetchField();
+
+    $cantidad_actual = $cant_anterior - $cant_salida;
+    $precio_prom = round($precio_prom, 3);
+    $monto_total = $monto * $cant_salida;
+    if (db_query("INSERT INTO alimentos_preparados_inventario(alimentos_preparados_id, fecha_ingreso,                 
+                cantidad_preparacion, cantidad_actual, cant_salida, monto, precio_prom, motivo, cliente, 
+                timestamp, monto_total) 
+                values($id_alimento, '$fecha', 
+                -$cant_salida, $cantidad_actual, $cant_salida, $monto, $precio_prom, 'Salida de alimento', $cliente," .
+                (time() - 21600) . ", $monto_total)")) {
+        $reorden = db_query("SELECT cantidad_reorden FROM alimentos_preparados WHERE alimentos_preparados_id=$id_alimento")->fetchField();
+        if ($cantidad_actual < $reorden) {
+            mail("adrgonzalez@gmail.com", "Orden de preparación de alimento", "$nombre_alimento esta por debajo del punto de reorden
+                                    que se definió, por favor realice el encargo correspondiente! Gracias");
+        }
+        $cliente_nombre = db_query("SELECT nombre FROM inventarios_clientes where id_inventarios_clientes=$cliente")->fetchField();
+
+        drupal_set_message("Se realizó correctamente la salida del alimento '$nombre_alimento' para el cliente '$cliente_nombre' ");
+    } else {
+        drupal_set_message("Error al realizar la salida del alimento, por favor intente de nuevo!", 'error');
+    }
+    drupal_goto('admin/content/inventario/alimentos');
+    //}
+    /* else {
+      if (db_query("INSERT INTO alimentos_preparados_inventario(alimentos_preparados_id, fecha_ingreso,
+      cantidad_preparacion, cantidad_actual)
+      values($id_alimento, '$fecha', $cant_preparacion, $cant_preparacion)")) {
+
+      //sacar las materias primas y hacer la resta en las cantidades de c/u
+
+      drupal_set_message("Se actualizo la cantidad del alimento existosamente!");
+      } else {
+      drupal_set_message("Error al guardar el alimento, por favor intente de nuevo!", 'error');
+      }
+      drupal_goto('admin/content/inventario/alimentos');
+      } */
+}
+

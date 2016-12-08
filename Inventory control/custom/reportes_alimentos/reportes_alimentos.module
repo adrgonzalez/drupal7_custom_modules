@@ -1,0 +1,539 @@
+<?php
+
+/**
+ * @file
+ * Render an administrative menu as a dropdown menu at the top of the window.
+ */
+
+/**
+ * Implements hook_menu().
+ */
+function reportes_alimentos_menu() {
+    $items = array();
+    // Module settings.
+    $items['admin/content/inventario/reporte/alimentos_args'] = array(
+        'title' => 'Reporte de Alimentos',
+        'description' => 'Reporte de Alimentos.',
+        'type' => MENU_NORMAL_ITEM,
+        'page callback' => 'system_reporte_alimento_args',
+        'access arguments' => array('entrada materias'),
+    );
+    $items['admin/content/inventario/reporte/alimento'] = array(
+        'title' => 'Reporte de Alimento en detalle',
+        'description' => 'Reporte de Alimentos en detalle',
+        'type' => MENU_NORMAL_ITEM,
+        'page callback' => 'system_reporte_alimento',
+        'access arguments' => array('entrada materias'),
+    );
+    $items['admin/content/inventario/reporte/materias_args'] = array(
+        'title' => 'Reporte de Materias Primas',
+        'description' => 'Reporte de Materias Primas.',
+        'type' => MENU_NORMAL_ITEM,
+        'page callback' => 'system_reporte_materias_args',
+        'access arguments' => array('entrada materias'),
+    );
+    $items['admin/content/inventario/reporte/materias'] = array(
+        'title' => 'Reporte de Materias Primas en detalle',
+        'description' => 'Reporte de Materias Primas en detalle.',
+        'type' => MENU_NORMAL_ITEM,
+        'page callback' => 'system_reporte_materias',
+        'access arguments' => array('entrada materias'),
+    );
+    $items['admin/content/inventario/reporte/salida_alimentos'] = array(
+        'title' => 'Reporte de Salidas de Alimentos',
+        'description' => 'Reporte de Salidas de Alimentos.',
+        'type' => MENU_LOCAL_TASK,
+        'page callback' => 'system_reporte_salida_alimentos',
+        'access arguments' => array('entrada materias'),
+    );
+    return $items;
+}
+
+/* * **************************************************************************************** */
+
+function system_reporte_alimento() {
+    if (arg(4) == "alimento" && arg(5) > 0) {
+        $por_fecha = "";
+        if (arg(6) > 0 && arg(7) > 0) {
+            $por_fecha = ' and fecha_ingreso between ' . "'" . arg(6) . "'" . ' and ' . "'" . arg(7) . "'";
+        }
+        $id_alimento = arg(5);
+        $rows = array();
+        //alimentos_preparados_id 	fecha_ingreso 	cantidad_preparacion 	cantidad_actual 	motivo
+        // Build the header for the report table.
+        $header = array(t('Alimento'), t('Fecha de ingreso'), t('Cantidad de preparación'), t('Cantidad actual'), 'Cantidad Salida',
+            t('Precio por unidad'), t('Motivo'), 'Cliente');
+        // Build the header to the CSV export.
+        $csv_rows = array(array(t('Alimento'), t('Fecha de ingreso'), t('Cantidad de preparación'), t('Cantidad actual'), 'Cantidad Salida',
+                t('Precio por unidad'), t('Motivo'), 'Cliente'));
+        $array_rows = array();
+        $rows = array();
+        $monto_total = 0;
+        $cantidad_total = 0;
+        $cantidad_total_preparacion = 0;
+
+        $results = db_query("SELECT * FROM alimentos_preparados_inventario where alimentos_preparados_id=$id_alimento
+                $por_fecha
+                order by alimentos_preparados_inventario_id asc");
+        foreach ($results as $result) {
+            if ($result) {
+                $id_alimento = $result->alimentos_preparados_id;
+                $nombre_alimento = db_query("SELECT nombre FROM alimentos_preparados 
+                where alimentos_preparados_id=$id_alimento")->fetchField();
+                $reorden = db_query("SELECT cantidad_reorden FROM alimentos_preparados 
+                where alimentos_preparados_id=$id_alimento")->fetchField();
+                $monto = db_query("SELECT monto FROM alimentos_preparados 
+                where alimentos_preparados_id=$id_alimento")->fetchField();
+                $cliente = $result->cliente;
+                $monto_total += $monto;
+                $cantidad_total += $result->cantidad_actual;
+                $cantidad_total_preparacion += $result->cantidad_preparacion;
+
+                $fecha = date_create($result->fecha_ingreso);
+
+                $rows[] = array(
+                    $nombre_alimento,
+                    date_format($fecha, 'Y-M-d'),
+                    $result->cantidad_preparacion,
+                    $result->cantidad_actual,
+                    $result->cant_salida,
+                    $monto,
+                    $result->motivo,
+                    ($cliente) ? db_query("SELECT nombre FROM inventarios_clientes where id_inventarios_clientes=$cliente")->fetchField() : "---",
+                );
+                $csv_rows[] = array(
+                    $nombre_alimento,
+                    $result->fecha_ingreso,
+                    $result->cantidad_preparacion,
+                    $result->cantidad_actual,
+                    $result->cant_salida,
+                    $monto,
+                    $result->motivo,
+                    ($cliente) ? db_query("SELECT nombre FROM inventarios_clientes where id_inventarios_clientes=$cliente")->fetchField() : "---",
+                );
+            }
+        }
+        /* $rows[] = array(
+          '<b>Total:</b>',
+          '---',
+          "<b>$cantidad_total_preparacion</b>",
+          "<b>$cantidad_total</b>",
+          "<b>$monto_total</b>",
+          '---',
+          '---',
+          ); */
+
+        //print_r($rows);
+        // Cache the CSV export.
+        //$csv_data = uc_reports_store_csv('matrias primas', $csv_rows);
+        // Build the page output holding the form, table, and CSV export link.
+        $output = drupal_render(drupal_get_form('system_reporte_alimento_form'))
+                . theme('table', array(
+                    'header' => $header,
+                    'rows' => $rows,
+                    'attributes' => array('class' => array('mytable')),
+                    'sort' => 'asc'
+                ))
+                //. '<div class="uc-reports-links">' . l(t('Export to CSV file.'), 'admin/store/reports/getcsv/' . $csv_data['report'] . '/' . $csv_data['user']) . '</div>'
+                . '<br /><div class="uc-reports-links">' . l('« volver', 'admin/content/inventario/reporte/alimentos_args') . '</div>';
+        /* $output = theme('table', $header, $rows, array('width' => '100%', 'class' => 'uc-sales-table', 'style' => 'text-align: center'))
+          . '<div class="uc-reports-links">' . l(t('Export to CSV file.'), 'admin/store/reports/getcsv/' . $csv_data['report'] . '/' . $csv_data['user']) . '</div>'
+          . '<br /><div class="uc-reports-links">' . l('Ingresar una nueva materia prima', 'admin/content/inventarios/registro_materias') . '</div>';
+          drupal_set_message(print_r($rows)); */
+        return $output;
+        //return drupal_get_form('materias_lista_form');
+    } else {
+        drupal_goto('admin/content/inventario/reporte/alimentos_args');
+    }
+}
+
+function system_reporte_alimento_form($form, &$form_state) {
+    $form = array();
+    $form['date_ini'] = array(
+        '#type' => 'date',
+        '#title' => "Fecha de inicio del reporte:",
+        '#required' => TRUE,
+        '#description' => "Ingrese la fecha de inicio en la que desea filtrar el reporte.",
+            //'#attributes' => array('class' => 'percentage', 'id' => 'txb_percentage'),
+    );
+    $form['date_fin'] = array(
+        '#type' => 'date',
+        '#title' => "Fecha de fin del reporte:",
+        '#required' => TRUE,
+        '#description' => "Ingrese la fecha de fin en la que desea filtrar el reporte.",
+            //'#attributes' => array('class' => 'percentage', 'id' => 'txb_percentage'),
+    );
+    $form['submit'] = array(
+        '#type' => 'submit',
+        '#value' => "Filtrar",
+            //'#sufix' => '<br/>' . l('ver todo »', ),
+    );
+    return $form;
+}
+
+function system_reporte_alimento_form_submit($form, &$form_state) {
+    if (arg(4) == "alimento" && arg(5) > 0) {
+        $date_ini = $form_state['values']['date_ini'];
+        $date_fin = $form_state['values']['date_fin'];
+
+        $fecha_ini = $date_ini['year'] . '-' . $date_ini['month'] . '-' . $date_ini['day'];
+        $fecha_fin = $date_fin['year'] . '-' . $date_fin['month'] . '-' . $date_fin['day'];
+        //drupal_set_message("date_ini: $fecha_ini - date_fin: $fecha_fin");
+        //$fecha_ini = strtotime($fecha_ini);
+        //$fecha_fin = strtotime($fecha_fin);
+        //drupal_set_message("date_ini: $fecha_ini - date_fin: $fecha_fin");
+        //$time1 = $fecha_ini - (3600 * 6);
+        //$time2 = $fecha_fin + 64799;
+
+        $form_state['redirect'] = 'admin/content/inventario/reporte/alimento/' . arg(5) . "/$fecha_ini/$fecha_fin";
+    }
+}
+
+/* * ************************************************************************************* */
+
+function system_reporte_alimento_args() {
+    if (arg(3) == "reporte" && arg(4) == "alimentos_args") {
+        // Build the header for the report table.
+        $header = array(t('Alimento Preparado'), t('Reporte'));
+        // Build the header to the CSV export.
+        $csv_rows = array(array(t('Alimento Preparado'), t('Reporte')));
+        $rows = array();
+        $array_rows = array();
+        $pre = $pos = "";
+
+        $results = db_query("SELECT * FROM alimentos_preparados order by nombre asc");
+        foreach ($results as $result) {
+            if ($result) {
+                $rows[] = array(
+                    $result->nombre,
+                    l('ver »', 'admin/content/inventario/reporte/alimento/' . $result->alimentos_preparados_id),
+                );
+                $csv_rows[] = array(
+                    $result->nombre,
+                    l('ver »', 'admin/content/inventario/reporte/alimento/' . $result->alimentos_preparados_id),
+                );
+            }
+            $pre = $pos = "";
+        }
+        //print_r($rows);
+        // Cache the CSV export.
+        //$csv_data = uc_reports_store_csv('matrias primas', $csv_rows);
+        // Build the page output holding the form, table, and CSV export link.
+        $output = theme('table', array(
+            'header' => $header,
+            'rows' => $rows,
+            'attributes' => array('class' => array('mytable')),
+            'sort' => 'asc'
+                ))
+        //. '<div class="uc-reports-links">' . l(t('Export to CSV file.'), 'admin/store/reports/getcsv/' . $csv_data['report'] . '/' . $csv_data['user']) . '</div>'
+        ;
+        /* $output = theme('table', $header, $rows, array('width' => '100%', 'class' => 'uc-sales-table', 'style' => 'text-align: center'))
+          . '<div class="uc-reports-links">' . l(t('Export to CSV file.'), 'admin/store/reports/getcsv/' . $csv_data['report'] . '/' . $csv_data['user']) . '</div>'
+          . '<br /><div class="uc-reports-links">' . l('Ingresar una nueva materia prima', 'admin/content/inventarios/registro_materias') . '</div>';
+          drupal_set_message(print_r($rows)); */
+        return $output;
+        //return drupal_get_form('materias_lista_form');
+    }
+}
+
+/* * ************************************************************************************* */
+
+function system_reporte_materias_args() {
+    if (arg(3) == "reporte" && arg(4) == "materias_args") {
+        // Build the header for the report table.
+        $header = array(t('Materia'), t('Reporte'));
+        // Build the header to the CSV export.
+        $csv_rows = array(array(t('Materia'), t('Reporte')));
+        $rows = array();
+        $array_rows = array();
+        $pre = $pos = "";
+
+        $results = db_query("SELECT * FROM materias_primas order by nombre asc");
+        foreach ($results as $result) {
+            if ($result) {
+                $rows[] = array(
+                    $result->nombre,
+                    l('ver »', 'admin/content/inventario/reporte/materias/' . $result->materias_primas_id),
+                );
+                $csv_rows[] = array(
+                    $result->nombre,
+                    l('ver »', 'admin/content/inventario/reporte/materias/' . $result->materias_primas_id),
+                );
+            }
+            $pre = $pos = "";
+        }
+        //print_r($rows);
+        // Cache the CSV export.
+        //$csv_data = uc_reports_store_csv('matrias primas', $csv_rows);
+        // Build the page output holding the form, table, and CSV export link.
+        $output = theme('table', array(
+            'header' => $header,
+            'rows' => $rows,
+            'attributes' => array('class' => array('mytable')),
+            'sort' => 'asc'
+                ))
+        //. '<div class="uc-reports-links">' . l(t('Export to CSV file.'), 'admin/store/reports/getcsv/' . $csv_data['report'] . '/' . $csv_data['user']) . '</div>'
+        ;
+        /* $output = theme('table', $header, $rows, array('width' => '100%', 'class' => 'uc-sales-table', 'style' => 'text-align: center'))
+          . '<div class="uc-reports-links">' . l(t('Export to CSV file.'), 'admin/store/reports/getcsv/' . $csv_data['report'] . '/' . $csv_data['user']) . '</div>'
+          . '<br /><div class="uc-reports-links">' . l('Ingresar una nueva materia prima', 'admin/content/inventarios/registro_materias') . '</div>';
+          drupal_set_message(print_r($rows)); */
+        return $output;
+        //return drupal_get_form('materias_lista_form');
+    }
+}
+
+/* * ************************************************************************************* */
+
+function system_reporte_materias() {
+    if (arg(4) == "materias" && arg(5) > 0) {
+        $por_fecha = "";
+        if (arg(6) > 0 && arg(7) > 0) {
+            $por_fecha = ' and fecha_ingreso between ' . "'" . arg(6) . "'" . ' and ' . "'" . arg(7) . "'";
+        }
+        $id_materia = arg(5);
+        //alimentos_preparados_id 	fecha_ingreso 	cantidad_preparacion 	cantidad_actual 	motivo
+        // Build the header for the report table.
+        $header = array(t('Materia Prima'), t('Fecha de ingreso'), t('Cantidad de compra'), t('Cantidad actual'), t('Unidad'),
+            t('Costo de compra'), t('Motivo'), 'Cliente');
+        // Build the header to the CSV export.
+        $csv_rows = array(array(t('Materia Prima'), t('Fecha de ingreso'), t('Cantidad de compra'), t('Cantidad actual'), t('Unidad'),
+                t('Costo de compra'), t('Motivo'), 'Cliente'));
+        $array_rows = array();
+        $rows = array();
+        $query = "SELECT * FROM materias_primas_inventario where materias_primas_id=$id_materia
+                $por_fecha
+                order by id_reporte_materias_primas asc";
+        //drupal_set_message($query);
+        $results = db_query($query);
+        foreach ($results as $result) {
+            if ($result) {
+                //drupal_set_message("id: $result->id_reporte_materias_primas");
+                $fecha = date_create($result->fecha_ingreso);
+                $id_materia = $result->materias_primas_id;
+                $nombre_alimento = db_query("SELECT nombre FROM materias_primas where materias_primas_id=$id_materia")->fetchField();
+                $reorden = db_query("SELECT reorden FROM materias_primas where materias_primas_id=$id_materia")->fetchField();
+                $unidad = db_query("SELECT unidad FROM materias_primas where materias_primas_id=$id_materia")->fetchField();
+                $id_cliente = $result->cliente;
+                $nombre_cliente = db_query("SELECT nombre FROM inventarios_proveedores where id_inventarios_proveedores=$id_cliente")->fetchField();
+                if (!$nombre_cliente) {
+                    $nombre_cliente = db_query("SELECT nombre FROM inventarios_clientes where id_inventarios_clientes=$id_cliente")->fetchField();
+                }
+                $timeStamp = $result->timestamp;
+                $dia = date('Y-m-d h:m', $timeStamp);
+                $rows[] = array(
+                    $nombre_alimento,
+                    date_format($fecha, 'Y-M-d'),
+                    $result->cantidad_compra,
+                    $result->cantidad_actual,
+                    $unidad,
+                    $result->monto,
+                    $result->motivo,
+                    $nombre_cliente,
+                );
+                $csv_rows[] = array(
+                    $nombre_alimento,
+                    $result->fecha_ingreso,
+                    $result->cantidad_compra,
+                    $result->cantidad_actual,
+                    $unidad,
+                    $result->monto,
+                    $result->motivo,
+                    $nombre_cliente,
+                );
+            }
+        }
+        //print_r($rows);
+        // Cache the CSV export.
+        //$csv_data = uc_reports_store_csv('matrias primas', $csv_rows);
+        // Build the page output holding the form, table, and CSV export link.
+        $output = drupal_render(drupal_get_form('reporte_materias_form'))
+                . theme('table', array(
+                    'header' => $header,
+                    'rows' => $rows,
+                    'attributes' => array('class' => array('mytable')),
+                    'sort' => 'asc'
+                ))
+                //. '<div class="uc-reports-links">' . l(t('Export to CSV file.'), 'admin/store/reports/getcsv/' . $csv_data['report'] . '/' . $csv_data['user']) . '</div>'
+                . '<br /><div class="uc-reports-links">' . l('« volver al listado de materias', 'admin/content/inventario/reporte/materias_args') . '</div>'
+                . '<br /><div class="uc-reports-links">' . l('ingreso de inventario de materias »', 'admin/content/inventario/ingreso_materias') . '</div>';
+        /* $output = theme('table', $header, $rows, array('width' => '100%', 'class' => 'uc-sales-table', 'style' => 'text-align: center'))
+          . '<div class="uc-reports-links">' . l(t('Export to CSV file.'), 'admin/store/reports/getcsv/' . $csv_data['report'] . '/' . $csv_data['user']) . '</div>'
+          . '<br /><div class="uc-reports-links">' . l('Ingresar una nueva materia prima', 'admin/content/inventarios/registro_materias') . '</div>';
+          drupal_set_message(print_r($rows)); */
+        return $output;
+        //return drupal_get_form('materias_lista_form');
+    } else {
+        drupal_goto('admin/content/inventario/reporte/materias_args');
+    }
+}
+
+function reporte_materias_form($form, &$form_state) {
+    //$date1 = date("Y-m-d H:i:s", (time() - 21600));
+    //$date2 = date("Y-m-d H:i:s", (time() - 21600));
+    if (arg(6) > 0 && arg(7) > 0) {
+        $timestamp1 = arg(6);
+        $timestamp2 = arg(7);
+        //$date1 = date("Y-m-d", $timestamp1);
+        //$date2 = date("Y-m-d", $timestamp2);
+        //drupal_set_message("date1: $date1 date2: $date2   " . arg(6) .'-'. arg(7));
+    }
+    $form = array();
+    $form['date_ini'] = array(
+        '#type' => 'date',
+        '#title' => "Fecha de inicio del reporte:",
+        '#required' => TRUE,
+        '#description' => "Ingrese la fecha de inicio en la que desea filtrar el reporte.",
+            //'#date_format' => 'Y-m-d',
+            //'#default_value' => $timestamp1,
+            //'#attributes' => array('class' => 'percentage', 'id' => 'txb_percentage'),
+    );
+    $form['date_fin'] = array(
+        '#type' => 'date',
+        '#title' => "Fecha de fin del reporte:",
+        '#required' => TRUE,
+        '#description' => "Ingrese la fecha de fin en la que desea filtrar el reporte.",
+            //'#date_format' => 'Y-m-d',
+            //'#default_value' => $timestamp2,
+            //'#attributes' => array('class' => 'percentage', 'id' => 'txb_percentage'),
+    );
+    $form['submit'] = array(
+        '#type' => 'submit',
+        '#value' => "Filtrar",
+            //'#sufix' => '<br/>' . l('ver todo »', ),
+    );
+    return $form;
+}
+
+function reporte_materias_form_submit($form, &$form_state) {
+    if (arg(4) == "materias" && arg(5) > 0) {
+        $date_ini = $form_state['values']['date_ini'];
+        $date_fin = $form_state['values']['date_fin'];
+
+        $fecha_ini = $date_ini['year'] . '-' . $date_ini['month'] . '-' . $date_ini['day'];
+        $fecha_fin = $date_fin['year'] . '-' . $date_fin['month'] . '-' . $date_fin['day'];
+        //drupal_set_message("date_ini: $fecha_ini - date_fin: $fecha_fin");
+        //$fecha_ini = strtotime($fecha_ini);
+        //$fecha_fin = strtotime($fecha_fin);
+        //$time1 = $fecha_ini - (3600 * 6);
+        //$time2 = $fecha_fin + 64799;
+
+        //drupal_set_message("date_ini: $fecha_ini - date_fin: $fecha_fin");
+        $form_state['redirect'] = 'admin/content/inventario/reporte/materias/' . arg(5) . "/$fecha_ini/$fecha_fin";
+    }
+}
+
+/* * ************************************************************************************* */
+
+/**
+ * Form to specify a year for the yearly sales report.
+ *
+ * @ingroup forms
+ * @see proveedores_liquidacion_report_form_submit()
+ */
+function proveedores_liquidacion_report_form($form_state, $year, $provider) {
+    //drupal_set_message("year: " . $year . " provider:  " . $provider);
+    $providers = db_query("SELECT * FROM {uc_product_providers}");
+    $options = array();
+    $options[] = t('- Please choose -');
+    while ($provid = db_fetch_object($providers)) {
+        if ($provid) {
+            $options[$provid->id_provider] = $provid->name;
+        }
+    }
+    $form = array();
+    $form['provider'] = array(
+        '#type' => 'select',
+        '#title' => t("Providers"),
+        '#description' => t('Select a provider'),
+        '#default_value' => $provider,
+        '#options' => $options,
+    );
+    $form['year'] = array(
+        '#type' => 'textfield',
+        '#title' => t('Sales year'),
+        '#default_value' => $year,
+        '#maxlength' => 4,
+        '#size' => 4,
+        '#prefix' => '<div class="sales-year">',
+        '#suffix' => '</div>',
+    );
+    $form['submit'] = array(
+        '#type' => 'submit',
+        '#value' => t('View'),
+        '#prefix' => '<div class="sales-year">',
+        '#suffix' => '</div>',
+    );
+    return $form;
+}
+
+/**
+ * @see proveedores_liquidacion_report_form()
+ */
+function proveedores_liquidacion_report_form_submit($form, &$form_state) {
+    //drupal_goto('admin/store/reports/sales/provider/year/'. $form_state['values']['year'] .'/'. $form_state['values']['provider']);
+    $form_state['redirect'] = 'admin/content/inventario/reporte/salida_alimentos/' . $form_state['values']['year'] . '/' . $form_state['values']['provider'];
+}
+
+function system_reporte_salida_alimentos() {
+    if (arg(4) == "salida_alimentos" && arg(5) > 0) {
+        $id_materia = arg(5);
+        //alimentos_preparados_id 	fecha_ingreso 	cantidad_preparacion 	cantidad_actual 	motivo
+        // Build the header for the report table.
+        $header = array(t('Materia Prima'), t('Fecha de ingreso'), t('Cantidad de compra'), t('Cantidad actual'), t('Unidad'), t('Costo de compra'), t('Motivo'));
+        // Build the header to the CSV export.
+        $csv_rows = array(array(t('Materia Prima'), t('Fecha de ingreso'), t('Cantidad de compra'), t('Cantidad actual'), t('Unidad'), t('Costo de compra'), t('Motivo')));
+        $array_rows = array();
+        $rows = array();
+
+        $results = db_query("SELECT * FROM materias_primas_inventario where materias_primas_id=$id_materia
+                order by fecha_ingreso desc");
+        foreach ($results as $result) {
+            if ($result) {
+                $id_materia = $result->materias_primas_id;
+                $nombre_alimento = db_query("SELECT nombre FROM materias_primas where materias_primas_id=$id_materia")->fetchField();
+                $reorden = db_query("SELECT reorden FROM materias_primas where materias_primas_id=$id_materia")->fetchField();
+                $unidad = db_query("SELECT unidad FROM materias_primas where materias_primas_id=$id_materia")->fetchField();
+                $rows[] = array(
+                    $nombre_alimento,
+                    $result->fecha_ingreso,
+                    $result->cantidad_compra,
+                    $result->cantidad_actual,
+                    $unidad,
+                    $result->monto,
+                    $result->motivo,
+                );
+                $csv_rows[] = array(
+                    $nombre_alimento,
+                    $result->fecha_ingreso,
+                    $result->cantidad_compra,
+                    $result->cantidad_actual,
+                    $unidad,
+                    $result->monto,
+                    $result->motivo,
+                );
+            }
+        }
+        //print_r($rows);
+        // Cache the CSV export.
+        //$csv_data = uc_reports_store_csv('matrias primas', $csv_rows);
+        // Build the page output holding the form, table, and CSV export link.
+        $output = theme('table', array(
+                    'header' => $header,
+                    'rows' => $rows,
+                    'attributes' => array('class' => array('mytable')),
+                    'sort' => 'asc'
+                ))
+                //. '<div class="uc-reports-links">' . l(t('Export to CSV file.'), 'admin/store/reports/getcsv/' . $csv_data['report'] . '/' . $csv_data['user']) . '</div>'
+                . '<br /><div class="uc-reports-links">' . l('« volver', 'admin/content/inventario/materias') . '</div>';
+        /* $output = theme('table', $header, $rows, array('width' => '100%', 'class' => 'uc-sales-table', 'style' => 'text-align: center'))
+          . '<div class="uc-reports-links">' . l(t('Export to CSV file.'), 'admin/store/reports/getcsv/' . $csv_data['report'] . '/' . $csv_data['user']) . '</div>'
+          . '<br /><div class="uc-reports-links">' . l('Ingresar una nueva materia prima', 'admin/content/inventarios/registro_materias') . '</div>';
+          drupal_set_message(print_r($rows)); */
+        return $output;
+        //return drupal_get_form('materias_lista_form');
+    } else {
+        drupal_goto('admin/content/inventario/reporte/alimentos_args');
+    }
+}
+

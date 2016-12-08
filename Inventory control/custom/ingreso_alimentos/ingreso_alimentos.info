@@ -1,0 +1,11 @@
+name = Ingreso de Alimentos en inventario
+description = "Actualiza la cantidad de alimento para la venta"
+package = Inventarios
+core = 7.x
+
+; Information added by http://www.agwebcr.com packaging script on 2012-23-06
+version = "7.x-1.0-dev"
+core = "7.x"
+project = "admin_menu"
+datestamp = "1340449545"
+

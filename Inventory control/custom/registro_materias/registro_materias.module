@@ -1,0 +1,456 @@
+<?php
+
+/**
+ * @file
+ * Render an administrative menu as a dropdown menu at the top of the window.
+ */
+
+/**
+ * Implements hook_permission().
+ */
+function registro_materias_permission() {
+    return array(
+        'entrada materias' => array(
+            'title' => t('Control de salida de materias'),
+            'description' => t('Control de salida de materias.'),
+        ),
+    );
+}
+
+/**
+ * Implements hook_menu().
+ */
+function registro_materias_menu() {
+    $items = array();
+    // Module settings.
+    $items['admin/content/inventario/registro_materias'] = array(
+        'title' => 'Registro de Materias',
+        'description' => 'Registro de Materias.',
+        'type' => MENU_LOCAL_TASK,
+        'page callback' => 'system_registro_materias',
+        'access arguments' => array('entrada materias'),
+    );
+    $items['admin/content/inventario/materias'] = array(
+        'title' => 'Listado de Materias',
+        'page callback' => 'materias_lista',
+        'access arguments' => array('entrada materias'),
+        'access callback' => 'user_access',
+        'type' => MENU_NORMAL_ITEM,
+    );
+    $items['admin/content/inventario/registro_materias/edit'] = array(
+        'title' => 'Editar Materias',
+        'description' => 'Entrada de Materias.',
+        'type' => MENU_LOCAL_TASK,
+        'page callback' => 'edit_registro_materias',
+        'access arguments' => array('entrada materias'),
+    );
+    $items['admin/content/inventario/registro_alimentos'] = array(
+        'title' => 'Registro de Alimentos',
+        'description' => 'Registro de Alimentos',
+        'type' => MENU_LOCAL_TASK,
+        'page callback' => 'system_registro_alimentos',
+        'access arguments' => array('entrada materias'),
+    );
+    return $items;
+}
+
+function system_registro_materias() {
+    return drupal_get_form('registro_materias_form');
+}
+
+function registro_materias_form($form, &$form_state) {
+    $unidades = array();
+    $unidades['kilos'] = 'kilos';
+    $unidades['litros'] = 'litros';
+    $unidades['otros'] = 'otros';
+    $form = array();
+    $form['name'] = array(
+        '#type' => 'textfield',
+        '#size' => 30,
+        '#maxlength' => 100,
+        '#title' => "Nombre de la materia prima:",
+        '#required' => TRUE,
+        '#description' => t('Ingrese el nombre de la materia prima.'),
+    );
+    $form['unit'] = array(
+        '#type' => 'select',
+        '#options' => $unidades,
+        '#title' => "Unidad de la materia prima:",
+        '#required' => TRUE,
+        '#description' => "Seleccione la unidad de medida de la materia prima.",
+            //'#attributes' => array('class' => 'percentage', 'id' => 'txb_percentage'),
+    );
+    $form['reorder'] = array(
+        '#type' => 'textfield',
+        '#size' => 30,
+        '#maxlength' => 100,
+        '#title' => "Cantidad de re-orden:",
+        '#required' => TRUE,
+        '#description' => "Ingrese el cantidad minima para solicitar adquirir más materia prima.",
+            //'#attributes' => array('class' => 'percentage', 'id' => 'txb_percentage'),
+    );
+    $form['submit'] = array(
+        '#type' => 'submit',
+        '#value' => "Guardar",
+    );
+    return $form;
+}
+
+function registro_materias_form_validate($form, &$form_state) {
+    
+}
+
+function registro_materias_form_submit($form, &$form_state) {
+    $name = $form_state['values']['name'];
+    $unit = $form_state['values']['unit'];
+    $reorder = $form_state['values']['reorder'];
+    if (db_query("INSERT INTO materias_primas (nombre, unidad, reorden, estado) 
+                values('$name', '$unit', $reorder, 1)")) {
+        drupal_set_message("La materia prima $name fue guardada existosamente!");
+        drupal_goto('admin/content/inventario/materias');
+    } else {
+        drupal_set_message("Error al guardar la materia prima $name, por favor intente de nuevo!", 'error');
+        drupal_goto('admin/content/inventario/registro_materias');
+    }
+}
+
+/* * **************************************************************************** */
+
+/* function uc_reports_store_csv($report_id, $rows) {
+  global $user;
+  $csv_output = '';
+  $user_id = empty($user->uid) ? session_id() : $user->uid;
+  foreach ($rows as $row) {
+  foreach ($row as $index => $column) {
+  $row[$index] = '"' . str_replace('"', '""', $column) . '"';
+  }
+  $csv_output .= implode(',', $row) . "\n";
+  }
+  cache_set('uc_reports_' . $report_id . '_' . $user_id, $csv_output, 'cache', REQUEST_TIME + 86400);
+  return array('user' => $user_id, 'report' => $report_id, 'csv' => $csv_output);
+  } */
+
+function materias_lista() {
+    // Build the header for the report table.
+    $header = array(t('Edit'), t('Materia'), 'Estado', t('Cantidad para reorden'), t('Unidad de medida'), t('Cantidad actual'));
+    // Build the header to the CSV export.
+    $csv_rows = array(array(t('Materia'), 'Estado', t('Cantidad para reorden'), t('Unidad de medida'), t('Cantidad actual')));
+    $rows = array();
+    $array_rows = array();
+    $pre = $pos = "";
+
+    $results = db_query("SELECT * FROM materias_primas order by nombre");
+    foreach ($results as $result) {
+        if ($result) {
+            $id_materia = $result->materias_primas_id;
+            $estado = db_query("SELECT estado FROM materias_primas where materias_primas_id=$id_materia")->fetchField();
+            //$cliente = db_query("SELECT cliente FROM materias_primas_inventario where materias_primas_id=$id_materia")->fetchField();
+            $cant_actual = db_query("SELECT cantidad_actual FROM materias_primas_inventario 
+                where materias_primas_id=$id_materia order by id_reporte_materias_primas desc")->fetchField();
+            $cant_actual2 = db_query("SELECT sum(cantidad_compra) FROM materias_primas_inventario 
+                where materias_primas_id=$id_materia")->fetchField();
+            if (!$cant_actual2) {
+                $cant_actual2 = 0;
+            }
+            if (!$cant_actual)
+                $cant_actual = 0;
+            if ($cant_actual < $result->reorden) {
+                $pre = '<span style="color: red">';
+                $pos = '</span>';
+            }
+            $rows[] = array(
+                l(('Editar'), 'admin/content/inventario/registro_materias/edit/' . $result->materias_primas_id),
+                $result->nombre . '<br/><i>' . l('(ver reporte completo »)', 
+                                  'admin/content/inventario/reporte/materias/' . $id_materia) . '</i>',
+                ($estado) ? 'Activo' : 'Inactivo',
+                $pre . $result->reorden . $pos,
+                $result->unidad,
+                $cant_actual,
+                    //$cliente
+            );
+            $csv_rows[] = array(
+                $result->nombre,
+                ($estado) ? 'Activo' : 'Inactivo',
+                $result->reorden,
+                $result->unidad,
+                $cant_actual,
+                    //$cliente
+            );
+        }
+        $pre = $pos = "";
+    }
+    //print_r($rows);
+    // Cache the CSV export.
+    //$csv_data = uc_reports_store_csv('matrias primas', $csv_rows);
+    // Build the page output holding the form, table, and CSV export link.
+    $output = theme('table', array(
+                'header' => $header,
+                'rows' => $rows,
+                'attributes' => array('class' => array('mytable')),
+                'sort' => 'asc'
+            ))
+            //. '<div class="uc-reports-links">' . l(t('Export to CSV file.'), 'admin/store/reports/getcsv/' . $csv_data['report'] . '/' . $csv_data['user']) . '</div>'
+            . '<br /><div class="uc-reports-links">' . l('Ingresar una nueva materia prima »', 'admin/content/inventario/registro_materias') . '</div>'
+            . '<br /><div class="uc-reports-links">' . l('Ingresar salida de inventario de materia prima »', 'admin/content/inventario/salida_materias') . '</div>'
+            . '<br /><div class="uc-reports-links">' . l('Ingresar inventario de materia prima »', 'admin/content/inventario/ingreso_materias') . '</div>';
+    /* $output = theme('table', $header, $rows, array('width' => '100%', 'class' => 'uc-sales-table', 'style' => 'text-align: center'))
+      . '<div class="uc-reports-links">' . l(t('Export to CSV file.'), 'admin/store/reports/getcsv/' . $csv_data['report'] . '/' . $csv_data['user']) . '</div>'
+      . '<br /><div class="uc-reports-links">' . l('Ingresar una nueva materia prima', 'admin/content/inventarios/registro_materias') . '</div>';
+      drupal_set_message(print_r($rows)); */
+    return $output;
+    //return drupal_get_form('materias_lista_form');
+}
+
+/* * *************************************************************************** */
+
+function edit_registro_materias() {
+    return drupal_get_form('edit_registro_materias_form');
+}
+
+function edit_registro_materias_form($form, &$form_state) {
+    if (arg(4) == "edit" && arg(5) > 0) {
+        $id_materia = arg(5);
+
+        $nombre = db_query("SELECT nombre FROM materias_primas where materias_primas_id=$id_materia")->fetchField();
+        $unidad = db_query("SELECT unidad FROM materias_primas where materias_primas_id=$id_materia")->fetchField();
+        $reorden = db_query("SELECT reorden FROM materias_primas where materias_primas_id=$id_materia")->fetchField();
+        $estado = db_query("SELECT estado FROM materias_primas where materias_primas_id=$id_materia")->fetchField();
+
+        $unidades = array();
+        $unidades['kilos'] = 'kilos';
+        $unidades['libras'] = 'libras';
+        $unidades['otros'] = 'otros';
+        $form = array();
+        $form['name'] = array(
+            '#type' => 'textfield',
+            '#size' => 30,
+            '#maxlength' => 100,
+            '#title' => "Nombre de la materia prima:",
+            '#required' => TRUE,
+            '#default_value' => $nombre,
+            '#description' => t('Ingrese el nombre de la materia prima.'),
+        );
+        $form['unit'] = array(
+            '#type' => 'select',
+            '#options' => $unidades,
+            '#title' => "Unidad de la materia prima:",
+            '#required' => TRUE,
+            '#default_value' => $unidad,
+            '#description' => "Seleccione la unidad de medida de la materia prima.",
+                //'#attributes' => array('class' => 'percentage', 'id' => 'txb_percentage'),
+        );
+        $form['reorder'] = array(
+            '#type' => 'textfield',
+            '#size' => 30,
+            '#maxlength' => 100,
+            '#title' => "Cantidad de re-orden:",
+            '#required' => TRUE,
+            '#default_value' => $reorden,
+            '#description' => "Ingrese el cantidad minima para solicitar adquirir más materia prima.",
+                //'#attributes' => array('class' => 'percentage', 'id' => 'txb_percentage'),
+        );
+        $form['estado'] = array(
+            '#type' => 'checkbox',
+            '#title' => t('Activo'),
+            '#default_value' => $estado,
+            '#description' => t('El check pone activo o desactivo la materia prima.'),
+        );
+        $form['submit'] = array(
+            '#type' => 'submit',
+            '#value' => "Guardar",
+        );
+        return $form;
+    } else {
+        drupal_goto('admin/content/inventario/materias');
+    }
+}
+
+function edit_registro_materias_form_validate($form, &$form_state) {
+    
+}
+
+function edit_registro_materias_form_submit($form, &$form_state) {
+    if (arg(4) == "edit" && arg(5) > 0) {
+        $id_materia = arg(5);
+        $name = $form_state['values']['name'];
+        $unit = $form_state['values']['unit'];
+        $estado = 0;
+        ($form_state['values']['estado']) ? $estado = 1 : '';
+        $reorder = $form_state['values']['reorder'];
+        if (db_query("UPDATE materias_primas set nombre='$name', unidad='$unit', reorden=$reorder, estado=$estado
+                        where materias_primas_id=$id_materia")) {
+            drupal_set_message("Se actualizo $name existosamente!");
+            drupal_goto('admin/content/inventario/materias');
+        } else {
+            drupal_set_message("Error al actualizar la materia prima $name, por favor intente de nuevo!", 'error');
+            drupal_goto('admin/content/inventario/materias');
+        }
+    } else {
+        drupal_goto('admin/content/inventario/materias');
+    }
+}
+
+/* * ************************************************************************************ */
+
+function system_ingreso_materias_alimentos() {
+    return drupal_get_form('ingreso_materias_alimentos_form');
+}
+
+function ingreso_materias_alimentos_form($form, &$form_state) {
+    $materias_prima_list = array();
+    $options = array();
+    $materias_primas = db_query("SELECT * FROM materias_primas");
+    /* foreach ($materias_primas as $materia_prima) {
+      if ($materia_prima) {
+      $options[$materia_prima->materias_primas_id] = $materia_prima->nombre;
+      }
+      } */
+    $form = array();
+    $form['name'] = array(
+        '#type' => 'textfield',
+        '#size' => 30,
+        '#maxlength' => 100,
+        '#title' => "Nombre del alimento preparado:",
+        '#required' => TRUE,
+        '#description' => t('Ingrese el nombre del alimento preparado.'),
+    );
+    $form['costo'] = array(
+        '#type' => 'textfield',
+        '#size' => 30,
+        '#maxlength' => 100,
+        '#title' => "Costo del alimento preparado por unidad de venta:",
+        '#required' => TRUE,
+        '#description' => t('Ingrese el costo del alimento preparado por unidad.'),
+        '#suffix' => '<h2>Seleccione la(s) materia(s) que conforman el alimento</h2><br/>'
+    );
+    foreach ($materias_primas as $materia_prima) {
+        if ($materia_prima) {
+            $materias_prima_list[] = $materia_prima->nombre;
+            //$options[$materia_prima->materias_primas_id] = $materia_prima->nombre;
+            //$materia_prima->materias_primas_id] = ;
+            $form[$materia_prima->nombre] = array(
+                '#type' => 'checkbox',
+                //'#options' => $options,
+                '#title' => $materia_prima->nombre,
+                '#required' => false,
+                    //'#description' => "Seleccione la(s) materia(s) que conforman el alimento.",
+                    //'#attributes' => array('class' => 'percentage', 'id' => 'txb_percentage'),
+            );
+            $form['cant_' . $materia_prima->nombre] = array(
+                '#type' => 'textfield',
+                '#size' => 30,
+                '#maxlength' => 100,
+                '#title' => "Cantidad de la materia que requiere el alimento:",
+                '#required' => false,
+                '#description' => "Ingrese el cantidad de la materia prima.",
+                    //'#attributes' => array('class' => 'percentage', 'id' => 'txb_percentage'),
+            );
+        }
+    }
+    $form['submit'] = array(
+        '#type' => 'submit',
+        '#value' => "Guardar",
+    );
+    return $form;
+}
+
+function ingreso_materias_alimentos_form_validate($form, &$form_state) {
+    
+}
+
+function ingreso_materias_alimentos_form_submit($form, &$form_state) {
+    $flag = 0;
+    $cant_insert = 0;
+    $materias_primas = db_query("SELECT * FROM materias_primas");
+    foreach ($materias_primas as $materia_prima) {
+        if ($materia_prima) {
+            if ($form_state['values'][$materia_prima->nombre]) {
+                $cant_insert++;
+                //drupal_set_message("$materia_prima->nombre, $materia_prima->materias_primas_id");
+                //$materias_prima_list[$materia_prima->materias_primas_id] = $materia_prima->nombre;
+                //$materias_prima_list[] = $materia_prima->materias_primas_id;
+                $name = $form_state['values']['name'];
+                $costo = $form_state['values']['costo'];
+                $id = 'cant_' . $materia_prima->nombre;
+                $cantidad = $form_state['values'][$id];
+                drupal_set_message("$name, $costo, $id, $cantidad");
+                if (db_query("INSERT INTO materias_primas_alimentos (nombre, costo, materia_prima, cantidad) 
+                values('$name', '$costo', $materia_prima->materias_primas_id, $cantidad)")) {
+                    $flag++;
+                }
+            }
+        }
+    }
+    if ($cant_insert == $flag) {
+        drupal_set_message("El alimento $name fue guardado existosamente!");
+        drupal_goto('admin/content/inventario/alimentos');
+    } else {
+        drupal_set_message("Error al guardar el alimento $name, por favor intente de nuevo!", 'error');
+        drupal_goto('admin/content/inventario/ingreso_materias_alimentos');
+    }
+}
+
+function alimentos_materias_lista() {
+    // Build the header for the report table.
+    $header = array(t('Edit'), t('Alimento'), t('Cantidad para reorden'), t('Unidad de medida'), t('Cantidad actual'));
+    // Build the header to the CSV export.
+    $csv_rows = array(array(t('Alimento'), t('Cantidad para reorden'), t('Unidad de medida'), t('Cantidad actual')));
+    $array_rows = array();
+    $rows = array();
+    $pre = $pos = "";
+
+    $results = db_query("SELECT * FROM materias_primas_alimentos order by nombre");
+    foreach ($results as $result) {
+        if ($result) {
+            $id_materia = $result->materias_primas_id;
+            $cant_actual = db_query("SELECT cantidad_actual FROM materias_primas_inventario 
+                where materias_primas_id=$id_materia order by id_reporte_materias_primas desc")->fetchField();
+            if (!$cant_actual)
+                $cant_actual = 0;
+            if ($cant_actual < $result->reorden) {
+                $pre = '<span style="color: red">';
+                $pos = '</span>';
+            }
+            $rows[] = array(
+                l(('Editar'), 'admin/content/inventario/registro_materias/edit/' . $result->materias_primas_id),
+                $result->nombre,
+                $pre . $result->reorden . $pos,
+                $result->unidad,
+                $cant_actual
+            );
+            $csv_rows[] = array(
+                $result->nombre,
+                $result->reorden,
+                $result->unidad,
+                $cant_actual
+            );
+        }
+        $pre = $pos = "";
+    }
+    //print_r($rows);
+    // Cache the CSV export.
+    //$csv_data = uc_reports_store_csv('matrias primas', $csv_rows);
+    // Build the page output holding the form, table, and CSV export link.
+    $output = theme('table', array(
+                'header' => $header,
+                'rows' => $rows,
+                'attributes' => array('class' => array('mytable')),
+                'sort' => 'asc'
+            ))
+            //. '<div class="uc-reports-links">' . l(t('Export to CSV file.'), 'admin/store/reports/getcsv/' . $csv_data['report'] . '/' . $csv_data['user']) . '</div>'
+            . '<br /><div class="uc-reports-links">' . l('Ingresar una nueva materia prima »', 'admin/content/inventario/registro_materias') . '</div>';
+    /* $output = theme('table', $header, $rows, array('width' => '100%', 'class' => 'uc-sales-table', 'style' => 'text-align: center'))
+      . '<div class="uc-reports-links">' . l(t('Export to CSV file.'), 'admin/store/reports/getcsv/' . $csv_data['report'] . '/' . $csv_data['user']) . '</div>'
+      . '<br /><div class="uc-reports-links">' . l('Ingresar una nueva materia prima', 'admin/content/inventarios/registro_materias') . '</div>';
+      drupal_set_message(print_r($rows)); */
+    return $output;
+    //return drupal_get_form('materias_lista_form');
+}
+
+/*     * ************************************************************************************* */
+
+
+
+
+
+    

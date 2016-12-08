@@ -1,0 +1,11 @@
+name = Ingreso de Materias
+description = "Actualiza la cantidad de materias primas necesarias para la venta o elaboración de alimentos"
+package = Inventarios
+core = 7.x
+
+; Information added by http://www.agwebcr.com packaging script on 2012-23-06
+version = "7.x-1.0-dev"
+core = "7.x"
+project = "admin_menu"
+datestamp = "1340449545"
+

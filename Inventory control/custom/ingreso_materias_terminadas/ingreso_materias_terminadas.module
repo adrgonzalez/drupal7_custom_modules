@@ -1,0 +1,757 @@
+<?php
+
+/**
+ * @file
+ * Render an administrative menu as a dropdown menu at the top of the window.
+ */
+
+/**
+ * Implements hook_permission().
+ */
+function ingreso_materias_terminadas_permission() {
+    return array(
+        'entrada materias terminadas' => array(
+            'title' => t('Control de ingreso de materias terminadas'),
+            'description' => t('Control de ingreso de materias terminadas.'),
+        ),
+    );
+}
+
+/* * ************************************************************************************* */
+
+/**
+ * Implements hook_menu().
+ */
+function ingreso_materias_terminadas_menu() {
+    $items = array();
+// Module settings.
+    $items['admin/content/inventario/ingreso_prod_terminadas_huevo'] = array(
+        'title' => 'Ingreso de producto terminado: Cartones de huevo',
+        'description' => 'Ingreso de producto terminado: Cartones de huevo.',
+        'type' => MENU_LOCAL_TASK,
+        'page callback' => 'system_ingreso_materias_terminadas_huevo',
+        'access arguments' => array('entrada materias terminadas'),
+    );
+    $items['admin/content/inventario/listado_prod_terminadas_huevo'] = array(
+        'title' => 'Listado de producto terminado: Cartones de huevo.',
+        'page callback' => 'materias_terminadas_lista',
+        'access arguments' => array('entrada proveedores'),
+        'access callback' => 'user_access',
+        'type' => MENU_NORMAL_ITEM,
+    );
+    $items['admin/content/inventario/salida_prod_terminadas_huevo'] = array(
+        'title' => 'Salida de producto terminado: Cartones de huevo.',
+        'page callback' => 'system_salida_materias_terminadas_huevo',
+        'access arguments' => array('entrada proveedores'),
+        'access callback' => 'user_access',
+        'type' => MENU_NORMAL_ITEM,
+    );
+    /* $items['admin/content/inventario/ingreso_prod_terminadas_alimento'] = array(
+      'title' => 'Ingreso de producto terminado: Alimento para aves',
+      'description' => 'Ingreso de producto terminado: Alimento para aves.',
+      'type' => MENU_LOCAL_TASK,
+      'page callback' => 'system_ingreso_materias_terminadas_alimento',
+      'access arguments' => array('entrada materias terminadas'),
+      ); */
+    return $items;
+}
+
+/* * ************************************************************************************* */
+
+function system_ingreso_materias_terminadas_huevo() {
+    return drupal_get_form('ingreso_materias_terminadas_huevo_form');
+}
+
+function ingreso_materias_terminadas_huevo_form($form, &$form_state) {
+    $prod_terminados = db_query("SELECT * FROM tipo_prod_terminado");
+    $options = array();
+    foreach ($prod_terminados as $prod_terminado) {
+        if ($prod_terminado) {
+            $options[$prod_terminado->id_tipo_prod_terminado] = $prod_terminado->nombre;
+        }
+    }
+    $proveedores = db_query("SELECT * FROM inventarios_proveedores");
+    $option_proveedor = array();
+    foreach ($proveedores as $proveedor) {
+        if ($proveedor) {
+            if ($proveedor->estado) {
+                $option_proveedor[$proveedor->id_inventarios_proveedores] = $proveedor->nombre;
+            }
+        }
+    }
+    $cliente_proveedores = db_query("SELECT * FROM inventarios_clientes where proveedor=1");
+    foreach ($cliente_proveedores as $cliente_proveedor) {
+        if ($cliente_proveedor) {
+            if ($cliente_proveedor->estado) {
+                $option_proveedor[$cliente_proveedor->id_inventarios_clientes] = $cliente_proveedor->nombre;
+            }
+        }
+    }
+    $productos = db_query("SELECT * FROM inventario_ingreso_prod_terminado");
+    $option_productos = array();
+    foreach ($productos as $producto) {
+        if ($producto) {
+            $option_productos[$producto->id_inventario_ingreso_prod_terminado] = $producto->nombre;
+        }
+    }
+    /* $form['prod_terminado'] = array(
+      '#type' => 'select',
+      '#options' => $options,
+      '#title' => "Nombre del producto terminado:",
+      '#required' => TRUE,
+      '#description' => t('Seleccione el nombre del producto terminado.'),
+      ); */
+    $form = array();
+    $form['producto'] = array(
+        '#type' => 'select',
+        '#options' => $option_productos,
+        //'#default_value' => $option_productos[0],
+        '#title' => "Nombre del producto terminado:",
+            //'#disabled' => true
+    );
+    $form['date'] = array(
+        '#type' => 'date',
+        '#title' => "Fecha:",
+        '#required' => TRUE,
+        '#description' => "Ingrese la fecha.",
+            //'#attributes' => array('class' => 'percentage', 'id' => 'txb_percentage'),
+    );
+    $form['cant_cartones'] = array(
+        '#type' => 'textfield',
+        '#size' => 30,
+        '#maxlength' => 100,
+        '#title' => "Cantidad de cartones de huevo:",
+        '#required' => TRUE,
+        '#description' => "Ingrese la cantidad de cartones de huevo.",
+            //'#attributes' => array('class' => 'percentage', 'id' => 'txb_percentage'),
+    );
+    $form['peso'] = array(
+        '#type' => 'textfield',
+        '#size' => 30,
+        '#maxlength' => 100,
+        '#title' => "Cantidad de kilos de huevo:",
+        '#required' => TRUE,
+        '#description' => "Ingrese la cantidad de kilos de huevo.",
+            //'#attributes' => array('class' => 'percentage', 'id' => 'txb_percentage'),
+    );
+    $form['peso_neto'] = array(
+        '#type' => 'textfield',
+        //'#disabled' => false,
+        '#size' => 30,
+        '#maxlength' => 100,
+        '#title' => "Cantidad de kilos de huevo neto",
+        '#required' => true,
+        '#default_value' => False,
+            //'#description' => "Ingrese la cantidad de kilos de huevo.",
+            //'#attributes' => array('class' => 'percentage', 'id' => 'txb_percentage'),
+    );
+    $form['monto'] = array(
+        '#type' => 'textfield',
+        '#size' => 30,
+        '#maxlength' => 100,
+        '#title' => "Costo unitario:",
+        '#required' => TRUE,
+        '#description' => "Ingrese el costo unitario.",
+            //'#attributes' => array('class' => 'percentage', 'id' => 'txb_percentage'),
+    );
+    $form['proveedor'] = array(
+        '#type' => 'select',
+        '#options' => $option_proveedor,
+        '#title' => "Proveedor",
+        '#required' => TRUE,
+        '#description' => "Seleccione el proveedor del que proviene.",
+            //'#attributes' => array('class' => 'percentage', 'id' => 'txb_percentage'),
+    );
+    $form['submit'] = array(
+        '#type' => 'submit',
+        '#value' => "Guardar",
+    );
+    return $form;
+}
+
+function ingreso_materias_terminadas_huevo_form_validate($form, &$form_state) {
+    
+}
+
+/*
+  function ingreso_materias_terminadas_huevo_form_submit($form, &$form_state) {
+  $nombre = $form_state['values']['nombre'];
+  if (db_query("INSERT INTO inventario_ingreso_prod_terminado (nombre) values('$nombre'")) {
+  drupal_set_message("Se creo el producto terminado $name existosamente!");
+  drupal_goto('admin/content/inventario/materias');
+  } else {
+  drupal_set_message("Error al guardar la materia prima $id_prod_terminado, por favor intente de nuevo!", 'error');
+  drupal_goto('admin/content/inventario/materias');
+  }
+  } */
+
+function ingreso_materias_terminadas_huevo_form_submit($form, &$form_state) {
+    $mydate = new DateTime(null);
+    $id_prod_terminado = $form_state['values']['producto'];
+    $cant_cartones = $form_state['values']['cant_cartones'];
+    $peso = $form_state['values']['peso'];
+    $peso_neto = $form_state['values']['peso_neto'];
+    $monto = $form_state['values']['monto'];
+    $date = $form_state['values']['date'];
+    $proveedor = $form_state['values']['proveedor'];
+    $field_key = $form_state['values']['producto'];
+    $nombre_producto = $form['producto']['#options'][$field_key];
+    $total_monto = round(($peso_neto * $monto),3);
+
+    $fecha = $date['year'] . '-' . $date['month'] . '-' . $date['day'];
+    if (db_query("SELECT cantidad_cartones FROM inventario_prod_terminado
+                    where id_inventario_ingreso_prod_terminado=$id_prod_terminado")->fetchField() > 0) {
+        $cant_anterior = db_query("SELECT cantidad_cartones_actual FROM inventario_prod_terminado
+              where id_inventario_ingreso_prod_terminado=$id_prod_terminado order by id_inventario_prod_terminado desc")->fetchField();
+        $cantidad_actual = $cant_anterior + $cant_cartones;
+        $peso_anterior = db_query("SELECT peso_actual FROM inventario_prod_terminado
+              where id_inventario_ingreso_prod_terminado=$id_prod_terminado order by id_inventario_prod_terminado desc")->fetchField();
+        $peso_actual = $peso_anterior + $peso;
+        $monto = round($monto, 3);
+        $peso = round($peso, 3);
+        $peso_neto = round($peso_neto, 3);
+        $cantidad_actual = round($cantidad_actual, 3);
+        $peso_actual = round($peso_actual, 3);
+        $total_monto = $peso_neto * $monto;
+
+        if (db_query("INSERT INTO inventario_prod_terminado (id_inventario_ingreso_prod_terminado, fecha_ingreso, cantidad_cartones, monto, 
+                peso, peso_neto, cantidad_cartones_actual, peso_actual, motivo, proveedor, timestamp, monto_total)
+                        values($id_prod_terminado, '$fecha', $cant_cartones, $monto, $peso, $peso_neto, $cantidad_actual, $peso_actual, 
+                'Ingreso de inventario', $proveedor, " . (time() - 21600) . ", $total_monto)")) {
+            drupal_set_message("Se ingreso inventario de '$nombre_producto' existosamente!");
+        } else {
+            drupal_set_message("Error al guardar la materia prima $id_prod_terminado, por favor intente de nuevo!", 'error');
+        }
+        drupal_goto('admin/content/inventario/listado_prod_terminadas_huevo');
+    } else {
+        if (db_query("INSERT INTO inventario_prod_terminado (id_inventario_ingreso_prod_terminado, fecha_ingreso, cantidad_cartones, monto, 
+                peso, peso_neto, cantidad_cartones_actual, peso_actual, motivo, proveedor, timestamp, monto_total)
+                        values($id_prod_terminado, '$fecha', $cant_cartones, $monto, $peso, $peso_neto, $cant_cartones, $peso,
+                'Ingreso de inventario', $proveedor, " . (time() - 21600) . ", $total_monto)")) {
+            drupal_set_message("Se ingreso inventario de '$nombre_producto' existosamente!");
+        } else {
+            drupal_set_message("Error al ingresar inventario de producto terminado '$nombre_producto', por favor intente de nuevo!", 'error');
+        }
+        drupal_goto('admin/content/inventario/listado_prod_terminadas_huevo');
+    }
+}
+
+/* * ************************************************************************************* */
+
+function system_reporte_huevos_form($form, &$form_state) {
+    $form = array();
+    $form['date_ini'] = array(
+        '#type' => 'date',
+        '#title' => "Fecha de inicio del reporte:",
+        '#required' => TRUE,
+        '#description' => "Ingrese la fecha de inicio en la que desea filtrar el reporte.",
+            //'#attributes' => array('class' => 'percentage', 'id' => 'txb_percentage'),
+    );
+    $form['date_fin'] = array(
+        '#type' => 'date',
+        '#title' => "Fecha de fin del reporte:",
+        '#required' => TRUE,
+        '#description' => "Ingrese la fecha de fin en la que desea filtrar el reporte.",
+            //'#attributes' => array('class' => 'percentage', 'id' => 'txb_percentage'),
+    );
+    $form['submit'] = array(
+        '#type' => 'submit',
+        '#value' => "Filtrar",
+            //'#sufix' => '<br/>' . l('ver todo »', ),
+    );
+    return $form;
+}
+
+function system_reporte_huevos_form_submit($form, &$form_state) {
+    if (arg(3) == "listado_prod_terminadas_huevo") {
+        $date_ini = $form_state['values']['date_ini'];
+        $date_fin = $form_state['values']['date_fin'];
+        //drupal_set_message("date_ini: " . print_r($date_ini) . " - date_fin: " . print_r($date_fin));
+        $fecha_ini = $date_ini['year'] . '-' . $date_ini['month'] . '-' . $date_ini['day'];
+        $fecha_fin = $date_fin['year'] . '-' . $date_fin['month'] . '-' . $date_fin['day'];
+        //drupal_set_message("date_ini: $fecha_ini - date_fin: $fecha_fin");
+        //$fecha_ini = strtotime($fecha_ini);
+        //$fecha_fin = strtotime($fecha_fin);
+        //drupal_set_message("date_ini: $fecha_ini - date_fin: $fecha_fin");
+        //$time1 = $fecha_ini - 21600;
+        //$time2 = $fecha_fin - 21600;
+        //drupal_set_message("time1: $time1, time2: $time2, fecha_ini: $fecha_ini, fecha_fin: $fecha_fin");
+        $form_state['redirect'] = 'admin/content/inventario/listado_prod_terminadas_huevo' . "/$fecha_ini/$fecha_fin";
+    }
+}
+
+/* * ************************************************************************ */
+
+function materias_terminadas_lista() {
+    if (arg(3) == "listado_prod_terminadas_huevo") {
+        $por_fecha = "";
+        if (arg(4) > 0 && arg(5) > 0) {
+            $time1 = arg(4);// - 21600;
+            $time2 = arg(5);// - 21600;
+            $por_fecha = " where fecha_ingreso between '$time1' and '$time2' ";
+            //drupal_set_message("time1: $time1, time2: $time2 " . arg(4) . '---' . arg(5));
+        }
+    }
+    // Build the header for the report table.
+    $header = array('Producto Terminado', 'Fecha ingreso', 'Peso (kg)', 'Peso neto(kg)', 'Cantidad cartones',
+        'Monto Unitario', 'Monto total', 'Proveedor', 'Motivo');
+    // Build the header to the CSV export.
+    $csv_rows = array(array('Producto Terminado', 'Fecha ingreso', 'Peso (kg)', 'Peso neto(kg)', 'Cantidad cartones',
+            'Monto Unitario', 'Monto Total', 'Proveedor', 'Motivo'));
+    $array_rows = array();
+    $rows = array();
+
+    $total_cartones = 0;
+    $total_monto = 0;
+    $total_peso = 0;
+    $total_peso_neto = 0;
+    $total_monto_total = 0;
+    $consulta = "SELECT * FROM inventario_prod_terminado 
+                        $por_fecha
+                        order by fecha_ingreso desc";
+    //drupal_set_message($consulta);
+    $results = db_query($consulta);
+    foreach ($results as $result) {
+        if ($result) {
+            $link_listado = l("(Listado)", 'admin/content/inventario/proveedores');
+            $proveedor = db_query("SELECT nombre FROM inventarios_proveedores 
+                where id_inventarios_proveedores=$result->proveedor")->fetchField();
+            if (!$proveedor) {
+                $proveedor = db_query("SELECT nombre FROM inventarios_clientes 
+                        where id_inventarios_clientes=$result->proveedor")->fetchField();
+                $link_listado = l("(Listado)", 'admin/content/inventario/clientes');
+            }
+            $monto_temp = 0;
+            if ($result->motivo == "Ingreso de inventario") {
+                $monto_temp = -$result->monto;
+            } else {
+                $monto_temp = abs($result->monto);
+            }
+            $monto_temp_total = 0;
+            if ($result->motivo == "Ingreso de inventario") {
+                $monto_temp_total = -$result->monto_total;
+            } else {
+                $monto_temp_total = abs($result->monto_total);
+            }
+            $peso_neto_temp = 0;
+            /* if ($result->motivo == "Salida de inventario") {
+              $peso_neto_temp = -$result->peso_neto;
+              } else {
+              $peso_neto_temp = abs($result->peso_neto);
+              }
+              drupal_set_message($result->peso_neto .'-'.$result->motivo); */
+            $id_materia = $result->id_inventario_prod_terminado;
+            $total_cartones += $result->cantidad_cartones;
+            $total_monto += $monto_temp;
+            $total_peso += $result->peso;
+            $total_peso_neto += $result->peso_neto; //$peso_neto_temp;
+            $total_monto_total += round($monto_temp_total, 3);
+            $rows[] = array(
+                'Cartones de huevos',
+                $result->fecha_ingreso,
+                $result->peso,
+                $result->peso_neto,
+                $result->cantidad_cartones,
+                $monto_temp,
+                round($monto_temp_total, 3),
+                //l($proveedor, 'admin/content/inventario/registro_proveedores/edit/' . $result->proveedor),
+                $proveedor . ' ' . $link_listado,
+                $result->motivo,
+            );
+            $csv_rows[] = array(
+                'Cartones de huevos',
+                $result->fecha_ingreso,
+                $result->peso,
+                $peso_neto_temp,
+                $result->cantidad_cartones,
+                $monto_temp,
+                round($monto_temp_total, 3),
+                $proveedor,
+                $result->motivo,
+            );
+        }
+    }
+    $rows[] = array(
+        '<b>Total:</b>',
+        '---',
+        "<b>$total_peso</b>",
+        "<b>$total_peso_neto</b>",
+        "<b>$total_cartones</b>",
+        "<b>$total_monto</b>",
+        "<b>" . round($total_monto_total, 3) . "</b>",
+        '---',
+        '---',
+    );
+    //print_r($rows);
+    // Cache the CSV export.
+    //$csv_data = uc_reports_store_csv('matrias primas', $csv_rows);
+    // Build the page output holding the form, table, and CSV export link.
+    $output = theme('table', array(
+                'header' => $header,
+                'rows' => $rows,
+                'attributes' => array('class' => array('mytable')),
+                'sort' => 'asc'
+            ))
+            //. '<div class="uc-reports-links">' . l(t('Export to CSV file.'), 'admin/store/reports/getcsv/' . $csv_data['report'] . '/' . $csv_data['user']) . '</div>'
+            . '<br /><div class="uc-reports-links">' . l('Ingresar inventario de producto terminado »', 'admin/content/inventario/ingreso_prod_terminadas_huevo') . '</div>'
+            . '<br /><div class="uc-reports-links">' . l('Salida de inventario de producto terminado »', 'admin/content/inventario/salida_prod_terminadas_huevo') . '</div>';
+    /* $output = theme('table', $header, $rows, array('width' => '100%', 'class' => 'uc-sales-table', 'style' => 'text-align: center'))
+      . '<div class="uc-reports-links">' . l(t('Export to CSV file.'), 'admin/store/reports/getcsv/' . $csv_data['report'] . '/' . $csv_data['user']) . '</div>'
+      . '<br /><div class="uc-reports-links">' . l('Ingresar una nueva materia prima', 'admin/content/inventarios/registro_materias') . '</div>';
+      drupal_set_message(print_r($rows)); */
+
+    /*     * ****************************************************************************************** */
+    /*     * *********************CUADRO RESUMEN DE LA EXISTENCIA DE PRODUCTO TERMINADO**************** */
+    /*     * ****************************************************************************************** */
+
+    // Build the header for the report table.
+    $header = array('Producto Terminado', 'Peso (kg) en inventario', 'Peso neto (kg) en inventario', 'Cantidad cartones en inventario');
+    // Build the header to the CSV export.
+    $csv_rows = array(array('Producto Terminado', 'Peso (kg) en inventario', 'Peso neto (kg) en inventario', 'Cantidad cartones en inventario'));
+    $array_rows = array();
+    $rows = array();
+
+    $results = db_query("SELECT 
+                        sum( `cantidad_cartones` ) AS cartones, 
+                        sum( `peso` ) AS peso, 
+                        sum( `peso_neto` ) AS peso_neto, 
+                        sum( `monto` ) AS monto
+                        FROM `inventario_prod_terminado` ");
+    foreach ($results as $result) {
+        if ($result) {
+            $rows[] = array(
+                'Cartones de huevos',
+                round($result->peso, 3),
+                round($result->peso_neto, 3),
+                round($result->cartones, 3),
+                    //round($result->monto, 3),
+            );
+            $csv_rows[] = array(
+                'Cartones de huevos',
+                round($result->peso, 3),
+                round($result->peso_neto, 3),
+                round($result->cartones, 3),
+                    //round($result->monto, 3),
+            );
+        }
+    }
+    //print_r($rows);
+    // Cache the CSV export.
+    //$csv_data = uc_reports_store_csv('matrias primas', $csv_rows);
+    // Build the page output holding the form, table, and CSV export link.
+    $output2 = theme('table', array(
+        'header' => $header,
+        'rows' => $rows,
+        'attributes' => array('class' => array('mytable')),
+        'sort' => 'asc'
+            ));
+
+    return "<h3>Cuadro resumen de las existencias acutales</h3>
+            $output2 <br /><br /> Listado general de movientos del producto terminado: Huevo <br />$output" .
+    drupal_render(drupal_get_form('system_reporte_huevos_form'));
+    //return drupal_get_form('materias_lista_form');
+}
+
+/* * ************************************************************************************* */
+
+function system_salida_materias_terminadas_huevo() {
+    return drupal_get_form('salida_materias_terminadas_huevo_form');
+}
+
+function salida_materias_terminadas_huevo_form($form, &$form_state) {
+    $prod_terminados = db_query("SELECT * FROM tipo_prod_terminado");
+    $options = array();
+    foreach ($prod_terminados as $prod_terminado) {
+        if ($prod_terminado) {
+            $options[$prod_terminado->id_tipo_prod_terminado] = $prod_terminado->nombre;
+        }
+    }
+    $clientes = db_query("SELECT * FROM inventarios_clientes");
+    $option_cliente = array();
+    foreach ($clientes as $cliente) {
+        if ($cliente) {
+            if ($cliente->estado) {
+                $option_cliente[$cliente->id_inventarios_clientes] = $cliente->nombre;
+            }
+        }
+    }
+    /* $clientes_proveedor = db_query("SELECT * FROM inventarios_proveedores where id_inventarios_proveedores");
+      foreach ($clientes_proveedor as $cliente_proveedor) {
+      if ($cliente_proveedor) {
+      if ($cliente_proveedor->estado) {
+      $option_cliente[$cliente_proveedor->id_inventarios_proveedores] = $cliente_proveedor->nombre;
+      }
+      }
+      } */
+    $productos = db_query("SELECT * FROM inventario_ingreso_prod_terminado");
+    $option_productos = array();
+    foreach ($productos as $producto) {
+        if ($producto) {
+            $option_productos[$producto->id_inventario_ingreso_prod_terminado] = $producto->nombre;
+        }
+    }
+
+    $form = array();
+    $form['producto'] = array(
+        '#type' => 'select',
+        '#options' => $option_productos,
+        //'#default_value' => $option_productos[0],
+        '#title' => "Nombre del producto terminado:",
+            //'#disabled' => true
+    );
+    $form['date'] = array(
+        '#type' => 'date',
+        '#title' => "Fecha:",
+        '#required' => TRUE,
+        '#description' => "Ingrese la fecha.",
+            //'#attributes' => array('class' => 'percentage', 'id' => 'txb_percentage'),
+    );
+    $form['cant_cartones'] = array(
+        '#type' => 'textfield',
+        '#size' => 30,
+        '#maxlength' => 100,
+        '#title' => "Cantidad de cartones de huevo:",
+        '#required' => TRUE,
+        '#description' => "Ingrese la cantidad de cartones de huevo.",
+            //'#attributes' => array('class' => 'percentage', 'id' => 'txb_percentage'),
+    );
+    $form['peso'] = array(
+        '#type' => 'textfield',
+        '#size' => 30,
+        '#maxlength' => 100,
+        '#title' => "Cantidad de kilos de huevo:",
+        '#required' => TRUE,
+        '#description' => "Ingrese la cantidad de kilos de huevo.",
+            //'#attributes' => array('class' => 'percentage', 'id' => 'txb_percentage'),
+    );
+    $form['peso_neto'] = array(
+        '#type' => 'textfield',
+        //'#disabled' => true,
+        '#size' => 30,
+        '#maxlength' => 100,
+        '#title' => "Cantidad de kilos de huevo neto",
+        '#required' => true,
+        '#default_value' => False,
+            //'#description' => "Ingrese la cantidad de kilos de huevo.",
+            //'#attributes' => array('class' => 'percentage', 'id' => 'txb_percentage'),
+    );
+    $form['monto'] = array(
+        '#type' => 'textfield',
+        '#size' => 30,
+        '#maxlength' => 100,
+        '#title' => "Costo:",
+        '#required' => TRUE,
+        '#description' => "Ingrese el costo unitario.",
+            //'#attributes' => array('class' => 'percentage', 'id' => 'txb_percentage'),
+    );
+    $form['cliente'] = array(
+        '#type' => 'select',
+        '#options' => $option_cliente,
+        '#title' => "Cliente",
+        '#required' => TRUE,
+        '#description' => "Seleccione el cliente al que se le va a despachar.",
+            //'#attributes' => array('class' => 'percentage', 'id' => 'txb_percentage'),
+    );
+    $form['submit'] = array(
+        '#type' => 'submit',
+        '#value' => "Guardar",
+    );
+    return $form;
+}
+
+function salida_materias_terminadas_huevo_form_validate($form, &$form_state) {
+    $field_key = $form_state['values']['producto'];
+    $nombre_materia = $form['producto']['#options'][$field_key];
+    $id_producto = $form_state['values']['producto'];
+    $cant_cartones = $form_state['values']['cant_cartones'];
+    $peso = $form_state['values']['peso'];
+    $cant_cartones_actual = db_query("SELECT cantidad_cartones_actual FROM inventario_prod_terminado 
+                where id_inventario_ingreso_prod_terminado=$id_producto order by id_inventario_prod_terminado desc")->fetchField();
+    $peso_actual = db_query("SELECT peso_actual FROM inventario_prod_terminado 
+                where id_inventario_ingreso_prod_terminado=$id_producto order by id_inventario_prod_terminado desc")->fetchField();
+    if (($cant_cartones_actual - $cant_cartones) < 0 || $cant_cartones_actual == 0) {
+        form_set_error('Faltante de producto terminado', "No hay suficiente producto terminado: $nombre_materia");
+    }
+    if (($peso_actual - $peso) <= 0) {
+        form_set_error('Faltante de producto terminado', "No hay suficiente producto terminado: $nombre_materia");
+    }
+}
+
+function salida_materias_terminadas_huevo_form_submit($form, &$form_state) {
+    $mydate = new DateTime(null);
+    $id_prod_terminado = $form_state['values']['producto'];
+    $field_key = $form_state['values']['producto'];
+    $nombre_producto = $form['producto']['#options'][$field_key];
+    $cant_cartones = $form_state['values']['cant_cartones'];
+    $peso = $form_state['values']['peso'];
+    $peso_neto = $form_state['values']['peso_neto'];
+    $monto = $form_state['values']['monto'];
+    $date = $form_state['values']['date'];
+    $cliente = $form_state['values']['cliente'];
+
+    $fecha = $date['year'] . '-' . $date['month'] . '-' . $date['day'];
+    if (db_query("SELECT cantidad_cartones FROM inventario_prod_terminado
+                    where id_inventario_ingreso_prod_terminado=$id_prod_terminado")->fetchField() > 0) {
+        $cant_anterior = db_query("SELECT cantidad_cartones_actual FROM inventario_prod_terminado
+              where id_inventario_ingreso_prod_terminado=$id_prod_terminado order by id_inventario_prod_terminado desc")->fetchField();
+        $cantidad_actual = $cant_anterior - $cant_cartones;
+        $peso_anterior = db_query("SELECT peso_actual FROM inventario_prod_terminado
+              where id_inventario_ingreso_prod_terminado=$id_prod_terminado order by id_inventario_prod_terminado desc")->fetchField();
+        $peso_actual = $peso_anterior - $peso;
+        $monto = round($monto, 3);
+        $peso = round($peso, 3);
+        $peso_neto = round($peso_neto, 3);
+        $cantidad_actual = round($cantidad_actual, 3);
+        $peso_actual = round($peso_actual, 3);
+        $monto_total = $peso_neto * $monto;
+
+        if (db_query("INSERT INTO inventario_prod_terminado (id_inventario_ingreso_prod_terminado, fecha_ingreso, cantidad_cartones, monto, 
+                peso, peso_neto, cantidad_cartones_actual, peso_actual, motivo, proveedor, timestamp, monto_total)
+                        values($id_prod_terminado, '$fecha', -$cant_cartones, $monto, -$peso, -$peso_neto, $cantidad_actual, $peso_actual, 
+                'Salida de inventario', $cliente, " . (time() - 21600) . ", $monto_total)")) {
+            drupal_set_message("Se realizó la salida de inventario de '$nombre_producto' existosamente!");
+        } else {
+            drupal_set_message("Error al realizar la salida de '$nombre_producto', por favor intente de nuevo!", 'error');
+        }
+        drupal_goto('admin/content/inventario/listado_prod_terminadas_huevo');
+    } else {
+        if (db_query("INSERT INTO inventario_prod_terminado (id_inventario_ingreso_prod_terminado, fecha_ingreso, cantidad_cartones, monto, 
+                peso, peso_neto, cantidad_cartones_actual, peso_actual, motivo, proveedor, timestamp, monto_total)
+                        values($id_prod_terminado, '$fecha', -$cant_cartones, $monto, -$peso, -$peso_neto, -$cant_cartones, -$peso,
+                'Ingreso de inventario', 0, " . (time() - 21600) . ", $monto_total)")) {
+            drupal_set_message("Se ingreso inventario de '$nombre_producto' existosamente!");
+        } else {
+            drupal_set_message("Error al guardar producto terminado '$nombre_producto', por favor intente de nuevo!", 'error');
+        }
+        drupal_goto('admin/content/inventario/listado_prod_terminadas_huevo');
+    }
+}
+
+/* * ************************************************************************************* */
+
+function system_ingreso_materias_terminadas_alimento() {
+    return drupal_get_form('ingreso_materias_terminadas_alimento_form');
+}
+
+function ingreso_materias_terminadas_alimento_form($form, &$form_state) {
+    $prod_terminados = db_query("SELECT * FROM tipo_prod_terminado");
+    $options = array();
+    foreach ($prod_terminados as $prod_terminado) {
+        if ($prod_terminado) {
+            $options[$prod_terminado->id_tipo_prod_terminado] = $prod_terminado->nombre;
+        }
+    }
+    $alimentos_preparados = db_query("SELECT * FROM alimentos_preparados where estado=1");
+    $option_alimentos = array();
+    foreach ($alimentos_preparados as $alimentos_preparado) {
+        if ($alimentos_preparado) {
+            $option_alimentos[$alimentos_preparado->alimentos_preparados_id] = $alimentos_preparado->nombre;
+        }
+    }
+    $proveedores = db_query("SELECT * FROM inventarios_proveedores");
+    $option_proveedor = array();
+    foreach ($proveedores as $proveedor) {
+        if ($proveedor) {
+            if ($proveedor->estado) {
+                $option_proveedor[$proveedor->id_inventarios_proveedores] = $proveedor->nombre;
+            }
+        }
+    }
+    /* $form['prod_terminado'] = array(
+      '#type' => 'select',
+      '#options' => $options,
+      '#title' => "Nombre del producto terminado:",
+      '#required' => TRUE,
+      '#description' => t('Seleccione el nombre del producto terminado.'),
+      ); */
+    $form = array();
+    $form['prod_terminado'] = array(
+        '#type' => 'textfield',
+        '#size' => 30,
+        '#maxlength' => 100,
+        '#default_value' => $options[2],
+        '#title' => "Nombre del producto terminado:",
+        '#disabled' => true
+    );
+    $form['date'] = array(
+        '#type' => 'date',
+        '#title' => "Fecha:",
+        '#required' => TRUE,
+        '#description' => "Ingrese la fecha.",
+            //'#attributes' => array('class' => 'percentage', 'id' => 'txb_percentage'),
+    );
+    $form['cant'] = array(
+        '#type' => 'textfield',
+        '#size' => 30,
+        '#maxlength' => 100,
+        '#title' => "Cantidad del producto terminado:",
+        '#required' => TRUE,
+        '#description' => "Ingrese la cantidad de producto terminado.",
+            //'#attributes' => array('class' => 'percentage', 'id' => 'txb_percentage'),
+    );
+    $form['proveedor'] = array(
+        '#type' => 'select',
+        '#options' => $option_proveedor,
+        '#title' => "Proveedor",
+        '#required' => TRUE,
+        '#description' => "Seleccione el proveedor del que proviene.",
+            //'#attributes' => array('class' => 'percentage', 'id' => 'txb_percentage'),
+    );
+    $form['tipo_alimento'] = array(
+        '#type' => 'select',
+        '#options' => $option_alimentos,
+        '#title' => "Tipo de alimentos",
+        '#required' => TRUE,
+        '#description' => "Seleccione el tipo de alimento.",
+            //'#attributes' => array('class' => 'percentage', 'id' => 'txb_percentage'),
+    );
+    $form['submit'] = array(
+        '#type' => 'submit',
+        '#value' => "Guardar",
+    );
+    return $form;
+}
+
+function ingreso_materias_terminadas_alimento_form_validate($form, &$form_state) {
+    
+}
+
+function ingreso_materias_terminadas_alimento_form_submit($form, &$form_state) {
+    $mydate = new DateTime(null);
+    $id_materia = $form_state['values']['materia_prima'];
+    $cant_compra = $form_state['values']['cant'];
+    $monto = $form_state['values']['monto'];
+    $date = $form_state['values']['date'];
+    $fecha = $date['year'] . '-' . $date['month'] . '-' . $date['day'];
+    $name = db_query("SELECT nombre FROM materias_primas where materias_primas_id=$id_materia")->fetchField();
+    $precio_prom = db_query("SELECT precio_prom FROM materias_primas WHERE materias_primas_id=$id_materia")->fetchField();
+    $monto_total = $cant_compra * $monto;
+    if (db_query("SELECT cantidad_actual FROM materias_primas_inventario 
+            where materias_primas_id=$id_materia")->fetchField() > 0) {
+        $cant_anterior = db_query("SELECT cantidad_actual FROM materias_primas_inventario 
+                where materias_primas_id=$id_materia order by id_reporte_materias_primas desc")->fetchField();
+        $cantidad_actual = $cant_anterior + $cant_compra;
+        if (db_query("INSERT INTO materias_primas_inventario (materias_primas_id, fecha_ingreso, cantidad_compra, monto, precio_prom,
+                    cantidad_actual, motivo, timestamp, cliente, monto_total) 
+                    values($id_materia, '$fecha', $cant_compra, $monto, $precio_prom,
+                $cantidad_actual, 'Ingreso de inventario', " . (time() - 21600) . ", $monto_total)")) {
+            drupal_set_message("Se actualizo $name existosamente!");
+            drupal_goto('admin/content/inventario/materias');
+        } else {
+            drupal_set_message("Error al guardar la materia prima $id_materia, por favor intente de nuevo!", 'error');
+            drupal_goto('admin/content/inventario/materias');
+        }
+    } else {
+        if (db_query("INSERT INTO materias_primas_inventario (materias_primas_id, fecha_ingreso, cantidad_compra, monto, precio_prom,
+                    cantidad_actual, motivo, timestamp, cliente, monto_total) 
+                    values($id_materia, '$fecha', $cant_compra, $monto, $precio_prom,
+                    $cant_compra, 'Ingreso de inventario', " . (time() - 21600) . ", $monto_total)")) {
+            drupal_set_message("Se actualizo $name existosamente!");
+            drupal_goto('admin/content/inventario/materias');
+        } else {
+            drupal_set_message("Error al guardar la materia prima $id_materia, por favor intente de nuevo!", 'error');
+            drupal_goto('admin/content/inventario/materias');
+        }
+    }
+}
+

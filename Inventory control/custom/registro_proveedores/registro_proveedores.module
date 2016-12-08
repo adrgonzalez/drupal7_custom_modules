@@ -1,0 +1,214 @@
+<?php
+
+/**
+ * @file
+ * Render an administrative menu as a dropdown menu at the top of the window.
+ */
+
+/**
+ * Implements hook_permission().
+ */
+function registro_proveedores_permission() {
+    return array(
+        'entrada proveedores' => array(
+            'title' => t('Registro de proveedores'),
+            'description' => t('Registro de proveedores'),
+        ),
+    );
+}
+
+/**
+ * Implements hook_menu().
+ */
+function registro_proveedores_menu() {
+    $items = array();
+    // Module settings.
+    $items['admin/content/inventario/registro_proveedores'] = array(
+        'title' => 'Registro de Proveedores',
+        'description' => 'Registro de Proveedores.',
+        'type' => MENU_LOCAL_TASK,
+        'page callback' => 'system_registro_proveedores',
+        'access arguments' => array('entrada proveedores'),
+    );
+    $items['admin/content/inventario/proveedores'] = array(
+        'title' => 'Listado de Proveedores',
+        'page callback' => 'proveedores_lista',
+        'access arguments' => array('entrada proveedores'),
+        'access callback' => 'user_access',
+        'type' => MENU_NORMAL_ITEM,
+    );
+    $items['admin/content/inventario/registro_proveedores/edit'] = array(
+        'title' => 'Editar Proveedores',
+        'description' => 'Entrada de Proveedores.',
+        'type' => MENU_LOCAL_TASK,
+        'page callback' => 'edit_registro_proveedores',
+        'access arguments' => array('entrada proveedores'),
+    );
+    return $items;
+}
+
+function system_registro_proveedores() {
+    return drupal_get_form('registro_proveedores_form');
+}
+
+function registro_proveedores_form($form, &$form_state) {
+    $form['name'] = array(
+        '#type' => 'textfield',
+        '#size' => 30,
+        '#maxlength' => 100,
+        '#title' => "Nombre del proveedor:",
+        '#required' => TRUE,
+        '#description' => t('Ingrese el nombre del proveedor.'),
+    );
+    $form['cliente'] = array(
+        '#type' => 'checkbox',
+        '#title' => t('Cliente'),
+        '#description' => t('Este check hace que el proveedor también sea un cliente.'),
+    );
+    $form['submit'] = array(
+        '#type' => 'submit',
+        '#value' => "Guardar",
+    );
+    return $form;
+}
+
+function registro_proveedores_form_validate($form, &$form_state) {
+    
+}
+
+function registro_proveedores_form_submit($form, &$form_state) {
+    $name = $form_state['values']['name'];
+    $proveedor = db_query("SELECT id_inventarios_proveedores FROM inventarios_proveedores WHERE nombre='$name'")->fetchField();
+    $cliente = $form_state['values']['cliente'];
+
+    if ($proveedor) {
+        drupal_set_message("El proveedor $name ya existe, por favor intente de nuevo!", 'error');
+    } else {
+        if (db_query("INSERT INTO inventarios_proveedores (nombre, estado, cliente) values('$name', 1, $cliente)")) {
+            drupal_set_message("El proveedor $name fue guardado existosamente!");
+        } else {
+            drupal_set_message("Error al guardar el proveedor $name, por favor intente de nuevo!", 'error');
+        }
+        drupal_goto('admin/content/inventario/proveedores');
+    }
+}
+
+/* * **************************************************************************** */
+
+function proveedores_lista() {
+    // Build the header for the report table.
+    $header = array(t('Edit'), t('Nombre'), 'Estado', 'Cliente', 'Reporte');
+    // Build the header to the CSV export.
+    $csv_rows = array(array(t('Edit'), t('Nombre'), 'Estado', 'Cliente', 'Reporte'));
+    $rows = array();
+    $array_rows = array();
+
+    $results = db_query("SELECT * FROM inventarios_proveedores order by nombre");
+    foreach ($results as $result) {
+        if ($result) {
+            $rows[] = array(
+                l(('Editar'), 'admin/content/inventario/registro_proveedores/edit/' . $result->id_inventarios_proveedores),
+                $result->nombre,
+                ($result->estado) ? 'Activo' : 'Inactivo',
+                ($result->cliente) ? 'SI' : 'NO',
+                l('ver »', 'admin/content/inventario/proveedores/proveedores_detalle/' . $result->id_inventarios_proveedores),
+            );
+            $csv_rows[] = array(
+                "",
+                $result->nombre,
+                ($result->estado) ? 'Activo' : 'Inactivo',
+                "",
+                ""
+            );
+        };
+    }
+    //print_r($rows);
+    // Cache the CSV export.
+    //$csv_data = uc_reports_store_csv('matrias primas', $csv_rows);
+    // Build the page output holding the form, table, and CSV export link.
+    $output = theme('table', array(
+                'header' => $header,
+                'rows' => $rows,
+                'attributes' => array('class' => array('mytable')),
+                'sort' => 'asc'
+            ))
+            //. '<div class="uc-reports-links">' . l(t('Export to CSV file.'), 'admin/store/reports/getcsv/' . $csv_data['report'] . '/' . $csv_data['user']) . '</div>'
+            . '<br /><div class="uc-reports-links">' . l('Ingresar un nuevo proveedor »', 'admin/content/inventario/registro_proveedores') . '</div>'
+            . '<br /><div class="uc-reports-links">' . l('Ingresar un nuevo cliente »', 'admin/content/inventario/registro_clientes') . '</div>'
+            . '<br /><div class="uc-reports-links">' . l('« regresar a productos terminados', 'admin/content/inventario/listado_prod_terminadas_huevo') . '</div>';
+    /* $output = theme('table', $header, $rows, array('width' => '100%', 'class' => 'uc-sales-table', 'style' => 'text-align: center'))
+      . '<div class="uc-reports-links">' . l(t('Export to CSV file.'), 'admin/store/reports/getcsv/' . $csv_data['report'] . '/' . $csv_data['user']) . '</div>'
+      . '<br /><div class="uc-reports-links">' . l('Ingresar una nueva materia prima', 'admin/content/inventarios/registro_proveedores') . '</div>';
+      drupal_set_message(print_r($rows)); */
+    return $output;
+    //return drupal_get_form('Proveedores_lista_form');
+}
+
+/* * *************************************************************************** */
+
+function edit_registro_proveedores() {
+    return drupal_get_form('edit_registro_proveedores_form');
+}
+
+function edit_registro_proveedores_form($form, &$form_state) {
+    if (arg(4) == "edit" && arg(5) > 0) {
+        $id_registro_proveedores = arg(5);
+
+        $nombre = db_query("SELECT nombre FROM inventarios_proveedores where id_inventarios_proveedores=$id_registro_proveedores")->fetchField();
+        $estado = db_query("SELECT estado FROM inventarios_proveedores where id_inventarios_proveedores=$id_registro_proveedores")->fetchField();
+        $cliente = db_query("SELECT cliente FROM inventarios_proveedores where id_inventarios_proveedores=$id_registro_proveedores")->fetchField();
+        $form['name'] = array(
+            '#type' => 'textfield',
+            '#size' => 30,
+            '#maxlength' => 100,
+            '#title' => "Nombre del proveedor:",
+            '#required' => TRUE,
+            '#default_value' => $nombre,
+            '#description' => t('Ingrese el nombre del proveedor.'),
+        );
+        $form['cliente'] = array(
+            '#type' => 'checkbox',
+            '#title' => t('Cliente'),
+            '#default_value' => $cliente,
+            '#description' => t('Este check hace que el proveedor también sea un cliente.'),
+        );
+        $form['estado'] = array(
+            '#type' => 'checkbox',
+            '#title' => t('Activo'),
+            '#default_value' => $estado,
+            '#description' => t('El check pone activo o desactivo al proveedor.'),
+        );
+        $form['submit'] = array(
+            '#type' => 'submit',
+            '#value' => "Guardar",
+        );
+        return $form;
+    } else {
+        drupal_goto('admin/content/inventario/proveedores');
+    }
+}
+
+function edit_registro_proveedores_form_validate($form, &$form_state) {
+    
+}
+
+function edit_registro_proveedores_form_submit($form, &$form_state) {
+    if (arg(4) == "edit" && arg(5) > 0) {
+        $id_registro_proveedores = arg(5);
+        $name = $form_state['values']['name'];
+        $estado = 0;
+        ($form_state['values']['estado']) ? $estado = 1 : '';
+        $cliente = 0;
+        ($form_state['values']['cliente']) ? $cliente = 1 : '';
+        if (db_query("UPDATE inventarios_proveedores set nombre='$name', estado=$estado, cliente=$cliente
+                        where id_inventarios_proveedores=$id_registro_proveedores")) {
+            drupal_set_message("Se actualizo $name existosamente!");
+        } else {
+            drupal_set_message("Error al actualizar el proveedor $name, por favor intente de nuevo!", 'error');
+        }
+        drupal_goto('admin/content/inventario/proveedores');
+    } else {
+        drupal_goto('admin/content/inventario/proveedores');
+    }
+}
+

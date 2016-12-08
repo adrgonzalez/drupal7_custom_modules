@@ -1,0 +1,280 @@
+<?php
+
+/**
+ * @file
+ * Render an administrative menu as a dropdown menu at the top of the window.
+ */
+
+/**
+ * Implements hook_permission().
+ */
+function ingreso_materias_permission() {
+    return array(
+        'entrada materias' => array(
+            'title' => t('Control de salida de materias'),
+            'description' => t('Control de salida de materias.'),
+        ),
+    );
+}
+
+/**
+ * Implements hook_menu().
+ */
+function ingreso_materias_menu() {
+    $items = array();
+// Module settings.
+    $items['admin/content/inventario/ingreso_materias'] = array(
+        'title' => 'Ingreso de inventario de materias',
+        'description' => 'Ingreso de inventario de Materias.',
+        'type' => MENU_LOCAL_TASK,
+        'page callback' => 'system_ingreso_materias',
+        'access arguments' => array('entrada materias'),
+    );
+    $items['admin/content/inventario/salida_materias'] = array(
+        'title' => 'Salida de inventario de materias',
+        'description' => 'Salida de inventario de Materias.',
+        'type' => MENU_LOCAL_TASK,
+        'page callback' => 'system_salida_materias',
+        'access arguments' => array('entrada materias'),
+    );
+    return $items;
+}
+
+/* * ************************************************************************************* */
+
+function system_ingreso_materias() {
+    return drupal_get_form('ingreso_materias_form');
+}
+
+function ingreso_materias_form($form, &$form_state) {
+    $materias_primas = db_query("SELECT * FROM materias_primas");
+    $options = array();
+    foreach ($materias_primas as $materia_prima) {
+        if ($materia_prima) {
+            $options[$materia_prima->materias_primas_id] = $materia_prima->nombre;
+        }
+    }
+    $form = array();
+    $form['materia_prima'] = array(
+        '#type' => 'select',
+        '#options' => $options,
+        '#title' => "Nombre de la materia prima:",
+        '#required' => TRUE,
+        '#description' => t('Seleccione el nombre de la materia prima.'),
+    );
+    $form['cant'] = array(
+        '#type' => 'textfield',
+        '#size' => 30,
+        '#maxlength' => 100,
+        '#title' => "Cantidad de la materia prima:",
+        '#required' => TRUE,
+        '#description' => "Ingrese la cantidad que se adquirio de la materia prima.",
+            //'#attributes' => array('class' => 'percentage', 'id' => 'txb_percentage'),
+    );
+    $form['monto'] = array(
+        '#type' => 'textfield',
+        '#size' => 30,
+        '#maxlength' => 100,
+        '#title' => "Monto unitario de la materia prima:",
+        '#required' => TRUE,
+        '#description' => "Ingrese el monto unitario en el que se adquirió de la materia prima.",
+            //'#attributes' => array('class' => 'percentage', 'id' => 'txb_percentage'),
+    );
+    $form['date'] = array(
+        '#type' => 'date',
+        '#title' => "Fecha de la compra:",
+        '#required' => TRUE,
+        '#description' => "Ingrese la fecha en que se adquirio la materia prima.",
+            //'#attributes' => array('class' => 'percentage', 'id' => 'txb_percentage'),
+    );
+    $form['submit'] = array(
+        '#type' => 'submit',
+        '#value' => "Guardar",
+    );
+    return $form;
+}
+
+function ingreso_materias_form_validate($form, &$form_state) {
+    
+}
+
+function ingreso_materias_form_submit($form, &$form_state) {
+    $mydate = new DateTime(null);
+    $id_materia = $form_state['values']['materia_prima'];
+    $cant_compra = $form_state['values']['cant'];
+    $monto = $form_state['values']['monto'];
+    $precio_prom = $monto / $cant_compra;
+    $date = $form_state['values']['date'];
+    $fecha = $date['year'] . '-' . $date['month'] . '-' . $date['day'];
+    $name = db_query("SELECT nombre FROM materias_primas where materias_primas_id=$id_materia")->fetchField();
+    $cant_anterior = db_query("SELECT cantidad_actual FROM materias_primas_inventario 
+                where materias_primas_id=$id_materia order by id_reporte_materias_primas desc limit 1")->fetchField();
+    $monto_total = $monto * $cant_compra;
+    if ($cant_anterior > 0) {
+        $cantidad_actual = $cant_anterior + $cant_compra;
+        if (db_query("INSERT INTO materias_primas_inventario (materias_primas_id, fecha_ingreso, cantidad_compra, monto, precio_prom,
+                    cantidad_actual, motivo, timestamp, cliente, monto_total) 
+                    values($id_materia, '$fecha', $cant_compra, $monto, $precio_prom, 
+                    $cantidad_actual, 'Ingreso de inventario', " . (time() - 21600) . ", 0, $monto_total)")) {
+            drupal_set_message("Se actualizo $name existosamente!");
+            drupal_goto('admin/content/inventario/materias');
+        } else {
+            drupal_set_message("Error al guardar la materia prima $id_materia, por favor intente de nuevo!", 'error');
+            drupal_goto('admin/content/inventario/materias');
+        }
+    } else {
+        if (db_query("INSERT INTO materias_primas_inventario (materias_primas_id, fecha_ingreso, cantidad_compra, monto, precio_prom,
+                    cantidad_actual, motivo, timestamp, cliente, monto_total) 
+                    values($id_materia, '$fecha', $cant_compra, $monto, $precio_prom,
+                    $cant_compra, 'Ingreso de inventario', " . (time() - 21600) . ", 0, $monto_total)")) {
+            drupal_set_message("Se actualizo $name existosamente!");
+            drupal_goto('admin/content/inventario/materias');
+        } else {
+            drupal_set_message("Error al guardar la materia prima $id_materia, por favor intente de nuevo!", 'error');
+            drupal_goto('admin/content/inventario/materias');
+        }
+    }
+}
+
+/* * ************************************************************************************* */
+
+function system_salida_materias() {
+    return drupal_get_form('salida_materias_form');
+}
+
+function salida_materias_form($form, &$form_state) {
+    $materias_primas = db_query("SELECT * FROM materias_primas");
+    $options = array();
+    foreach ($materias_primas as $materia_prima) {
+        if ($materia_prima) {
+            $options[$materia_prima->materias_primas_id] = $materia_prima->nombre;
+        }
+    }
+    $clientes = db_query("SELECT * FROM inventarios_clientes");
+    $option_cliente = array();
+    foreach ($clientes as $cliente) {
+        if ($cliente) {
+            if ($cliente->estado) {
+                $option_cliente[$cliente->id_inventarios_clientes] = $cliente->nombre;
+            }
+        }
+    }
+    $clientes_proveedor = db_query("SELECT * FROM inventarios_proveedores where cliente=1 order by nombre");
+    foreach ($clientes_proveedor as $cliente_proveedor) {
+        if ($cliente_proveedor) {
+            if ($cliente_proveedor->estado) {
+                $option_cliente[$cliente_proveedor->id_inventarios_proveedores] = $cliente_proveedor->nombre;
+            }
+        }
+    }
+    $productos = db_query("SELECT * FROM inventario_ingreso_prod_terminado");
+    $option_productos = array();
+    foreach ($productos as $producto) {
+        if ($producto) {
+            $option_productos[$producto->id_inventario_ingreso_prod_terminado] = $producto->nombre;
+        }
+    }
+
+    $form = array();
+    $form['materia_prima'] = array(
+        '#type' => 'select',
+        '#options' => $options,
+        '#title' => "Nombre de la materia prima:",
+        '#required' => TRUE,
+        '#description' => t('Seleccione el nombre de la materia prima.'),
+    );
+    $form['cant'] = array(
+        '#type' => 'textfield',
+        '#size' => 30,
+        '#maxlength' => 100,
+        '#title' => "Cantidad de la materia prima:",
+        '#required' => TRUE,
+        '#description' => "Ingrese la cantidad que se va a vender de la materia prima.",
+            //'#attributes' => array('class' => 'percentage', 'id' => 'txb_percentage'),
+    );
+    $form['monto'] = array(
+        '#type' => 'textfield',
+        '#size' => 30,
+        '#maxlength' => 100,
+        '#title' => "Monto de la materia prima:",
+        '#required' => TRUE,
+        '#description' => "Ingrese el monto en el cual se va a vender la materia prima.",
+            //'#attributes' => array('class' => 'percentage', 'id' => 'txb_percentage'),
+    );
+    $form['date'] = array(
+        '#type' => 'date',
+        '#title' => "Fecha de la compra:",
+        '#required' => TRUE,
+        '#description' => "Ingrese la fecha en la que se vende la materia prima.",
+            //'#attributes' => array('class' => 'percentage', 'id' => 'txb_percentage'),
+    );
+    $form['cliente'] = array(
+        '#type' => 'select',
+        '#options' => $option_cliente,
+        '#title' => "Nombre del cliente:",
+        '#required' => TRUE,
+        '#description' => t('Seleccione el nombre del cliente.'),
+    );
+    $form['submit'] = array(
+        '#type' => 'submit',
+        '#value' => "Guardar",
+    );
+    return $form;
+}
+
+function salida_materias_form_validate($form, &$form_state) {
+    $field_key = $form_state['values']['materia_prima'];
+    $nombre_materia = $form['materia_prima']['#options'][$field_key];
+    $id_materia_prima = $form_state['values']['materia_prima'];
+    $cant_materia_prima = $form_state['values']['cant'];
+    $cant_actual = db_query("SELECT cantidad_actual FROM materias_primas_inventario 
+                where materias_primas_id=$id_materia_prima order by id_reporte_materias_primas desc")->fetchField();
+    if (($cant_actual - $cant_materia_prima) < 0 || $cant_actual == 0) {
+        form_set_error('Faltante de materia prima', "No hay suficiente materia prima de $nombre_materia");
+    }
+}
+
+function salida_materias_form_submit($form, &$form_state) {
+    $mydate = new DateTime(null);
+    $id_materia = $form_state['values']['materia_prima'];
+    $cant_compra = $form_state['values']['cant'];
+    $cliente = $form_state['values']['cliente'];
+    $monto = $form_state['values']['monto'];
+    $date = $form_state['values']['date'];
+    $fecha = $date['year'] . '-' . $date['month'] . '-' . $date['day'];
+    $precio_prom = $monto; // monto si el monto de la salida es unitario, sino es el cantidad/monto//db_query("SELECT precio_prom FROM materias_primas WHERE materias_primas_id=$id_materia")->fetchField();
+    $name = db_query("SELECT nombre FROM materias_primas where materias_primas_id=$id_materia")->fetchField();
+    $monto_total = $cant_compra * $monto;
+    if (db_query("SELECT cantidad_actual FROM materias_primas_inventario 
+            where materias_primas_id=$id_materia")->fetchField() > 0) {
+        $cant_anterior = db_query("SELECT cantidad_actual FROM materias_primas_inventario 
+                where materias_primas_id=$id_materia order by id_reporte_materias_primas desc")->fetchField();
+        $cantidad_actual = $cant_anterior - $cant_compra;
+        if (db_query("INSERT INTO materias_primas_inventario (materias_primas_id, fecha_ingreso, cantidad_compra, monto, precio_prom,
+                    cantidad_actual, motivo, timestamp, cliente, monto_total) 
+                    values($id_materia, '$fecha', -$cant_compra, $monto, $precio_prom,
+                    $cantidad_actual, 'Ingreso de inventario', " . (time() - 21600) . ", 
+                           $cliente, $monto_total)")) {
+            drupal_set_message("Se agrego el inventario de $name existosamente!");
+            drupal_goto('admin/content/inventario/materias');
+        } else {
+            drupal_set_message("Error al guardar la materia prima $id_materia, por favor intente de nuevo!", 'error');
+            drupal_goto('admin/content/inventario/materias');
+        }
+    } else {
+        if (db_query("INSERT INTO materias_primas_inventario (materias_primas_id, fecha_ingreso, cantidad_compra, monto, precio_prom,
+                    cantidad_actual, motivo, timestamp, cliente, monto_total) 
+                    values($id_materia, '$fecha', $cant_compra, $monto, $precio_prom,
+                    -$cant_compra, 'Salida de materias primas para la venta', "
+                        . (time() - 21600) . ", $cliente, $monto_total)")) {
+            drupal_set_message("Se agrego el inventario de $name existosamente!");
+            drupal_goto('admin/content/inventario/materias');
+        } else {
+            drupal_set_message("Error al guardar la materia prima $id_materia, por favor intente de nuevo!", 'error');
+            drupal_goto('admin/content/inventario/materias');
+        }
+    }
+}
+
+/****************************************************************************************/
+

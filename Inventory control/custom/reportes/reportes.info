@@ -1,0 +1,5 @@
+name = Reportes
+description = Provides reportes about your store's sales, customers, and products.
+package = Inventarios
+core = 7.x
+
